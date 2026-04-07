@@ -37,7 +37,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-[--background]">
+      <body suppressHydrationWarning className="flex min-h-full flex-col bg-[--background]">
         <SiteNav />
         {/* pb-20 on mobile leaves space for fixed bottom nav (64px + gap) */}
         <div className="flex-1 pb-20 sm:pb-0">{children}</div>

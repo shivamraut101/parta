@@ -208,6 +208,9 @@ export function DailyPartaForm({
             onChange={(e) => setDate(e.target.value)}
             className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base text-stone-900 focus:border-teal-500 focus:outline-none"
           />
+          <p className="mt-1 text-[11px] text-stone-500">
+            Purani date select karke us din ka galla update/edit kar sakte ho (agar day locked nahi hai).
+          </p>
         </div>
 
         {/* Cash + UPI */}

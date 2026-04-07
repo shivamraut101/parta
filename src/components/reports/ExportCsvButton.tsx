@@ -2,22 +2,23 @@
 
 import { Download, Loader } from "lucide-react";
 import { useState } from "react";
+import { exportDailyPartaCsvAction } from "@/lib/actions/exports";
 
 type ExportResult = { data: string; filename: string; mimeType: string } | { error: string };
 
 type Props = {
-  action: () => Promise<ExportResult>;
+  monthYear?: string;
   label?: string;
   className?: string;
 };
 
-export function ExportCsvButton({ action, label = "Export CSV", className }: Props) {
+export function ExportCsvButton({ monthYear, label = "Export CSV", className }: Props) {
   const [loading, setLoading] = useState(false);
 
   const handleClick = async () => {
     setLoading(true);
     try {
-      const result = await action();
+      const result: ExportResult = await exportDailyPartaCsvAction(monthYear);
       if ("error" in result) return;
       const blob = new Blob([new TextEncoder().encode(result.data)], { type: result.mimeType });
       const url = URL.createObjectURL(blob);
@@ -37,7 +38,7 @@ export function ExportCsvButton({ action, label = "Export CSV", className }: Pro
     <button
       onClick={handleClick}
       disabled={loading}
-      className={className}
+      className={`${className ?? ""} transition-all active:scale-[0.985] disabled:opacity-60`}
     >
       {loading ? <Loader size={14} className="inline animate-spin mr-1" /> : <Download size={14} className="inline mr-1" />}
       {loading ? "Exporting..." : label}

@@ -1,6 +1,5 @@
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { ExportButton } from "@/components/admin/ExportButton";
-import { exportAdminSuppliersCsvAction, exportAdminSuppliersPdfAction } from "@/lib/actions/adminExports";
 import {
   AdminDataTable,
   type TableColumn,
@@ -126,8 +125,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton action={exportAdminSuppliersCsvAction} label="Export CSV" />
-            <ExportButton action={exportAdminSuppliersPdfAction} label="Export PDF" />
+            <ExportButton actionKey="admin-suppliers-csv" label="Export CSV" />
+            <ExportButton actionKey="admin-suppliers-pdf" label="Export PDF" />
           </div>
         </div>
 

@@ -43,7 +43,7 @@ export function BottomNav() {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${
+              className={`flex flex-1 select-none flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-all active:scale-[0.96] ${
                 active
                   ? "text-teal-700"
                   : "text-stone-400 active:text-stone-700"
@@ -65,7 +65,7 @@ export function BottomNav() {
         <button
           type="button"
           onClick={() => setMoreOpen((prev) => !prev)}
-          className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${
+          className={`flex flex-1 select-none flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-all active:scale-[0.96] ${
             moreOpen ? "text-teal-700" : "text-stone-400 active:text-stone-700"
           }`}
         >
@@ -97,7 +97,7 @@ export function BottomNav() {
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-500 transition-all hover:bg-stone-200 active:scale-95"
               >
                 <X size={18} />
               </button>
@@ -107,7 +107,7 @@ export function BottomNav() {
               <Link
                 href="/financial-identity"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
+                className="flex items-center gap-3 rounded-2xl p-3 transition-all hover:bg-stone-50 active:scale-[0.985] active:bg-stone-50"
               >
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700 shrink-0">
                   <Wallet size={20} />
@@ -121,7 +121,7 @@ export function BottomNav() {
               <Link
                 href="/reports"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
+                className="flex items-center gap-3 rounded-2xl p-3 transition-all hover:bg-stone-50 active:scale-[0.985] active:bg-stone-50"
               >
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 shrink-0">
                   <BarChart3 size={20} />
@@ -135,7 +135,7 @@ export function BottomNav() {
               <Link
                 href="/admin"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
+                className="flex items-center gap-3 rounded-2xl p-3 transition-all hover:bg-stone-50 active:scale-[0.985] active:bg-stone-50"
               >
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-stone-100 text-stone-600 shrink-0">
                   <Settings size={20} />
@@ -149,7 +149,7 @@ export function BottomNav() {
               <form action={signOutAction} className="pt-2 border-t border-stone-200">
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 rounded-2xl p-3 active:bg-rose-50 hover:bg-rose-50 transition-colors"
+                  className="flex w-full items-center gap-3 rounded-2xl p-3 transition-all hover:bg-rose-50 active:scale-[0.985] active:bg-rose-50"
                 >
                   <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 shrink-0">
                     <LogOut size={20} />

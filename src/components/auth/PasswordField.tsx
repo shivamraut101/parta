@@ -42,7 +42,7 @@ export function PasswordField({
         }}
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
-        className="absolute right-3 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
+        className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-stone-500 transition-all hover:bg-stone-100 hover:text-stone-700 active:scale-95"
       >
         {visible ? <EyeOff size={18} /> : <Eye size={18} />}
       </button>

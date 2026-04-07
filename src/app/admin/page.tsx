@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import {
   inviteMember,
   lockBusinessDay,
+  resetAccountData,
   reopenBusinessDay,
   updateBrandSettings,
   updateFinancialSettings,
 } from "@/app/admin/actions";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { db } from "@/db";
 import { shopMembers } from "@/db/schema";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
@@ -17,6 +19,7 @@ type AdminPageProps = {
   searchParams?: Promise<{
     saved?: string;
     day?: string;
+    error?: string;
   }>;
 };
 
@@ -27,6 +30,15 @@ function notice(saved?: string, day?: string) {
   if (saved === "reopened") return `Business day ${day ?? "selected"} reopened`;
   if (saved === "invited") return "Invitation sent and member added";
   if (saved === "member_removed") return "Team member removed";
+  if (saved === "account_reset") return "Account data reset complete";
+  return null;
+}
+
+function errorNotice(error?: string) {
+  if (error === "reset_invalid_input") return "Reset failed: enter password and type RESET to confirm";
+  if (error === "reset_invalid_password") return "Reset failed: current password is incorrect";
+  if (error === "reset_auth_required") return "Reset failed: please sign in again and retry";
+  if (error === "reset_failed") return "Reset failed due to server/database issue. Please retry.";
   return null;
 }
 
@@ -37,6 +49,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const params = await searchParams;
   const today = getBusinessDateString();
   const msg = notice(params?.saved, params?.day);
+  const resetError = errorNotice(params?.error);
 
   let members: { id: string; userId: string; role: string }[] = [];
   try {
@@ -59,6 +72,12 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       {msg ? (
         <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
           {msg}
+        </div>
+      ) : null}
+
+      {resetError ? (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {resetError}
         </div>
       ) : null}
 
@@ -131,6 +150,32 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
               ))}
             </div>
           ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-red-200 bg-red-50/30 p-5 shadow-sm">
+          <p className="mb-1 text-base font-bold text-red-700">Account Reset</p>
+          <p className="mb-3 text-xs text-red-600">
+            Warning: this clears all business data (Daily Parta, Debt, Suppliers, Reports, Audit).
+          </p>
+          <form action={resetAccountData} className="space-y-3">
+            <PasswordField
+              id="currentPassword"
+              name="currentPassword"
+              placeholder="Current sign-in password"
+              autoComplete="current-password"
+              className="h-12 w-full rounded-xl border-2 border-red-200 bg-white px-4 pr-12 text-sm text-stone-900 focus:border-red-500 focus:outline-none"
+            />
+            <input
+              id="confirmPhrase"
+              name="confirmPhrase"
+              required
+              placeholder='Type RESET to confirm'
+              className="h-12 w-full rounded-xl border-2 border-red-200 bg-white px-4 text-sm text-stone-900 focus:border-red-500 focus:outline-none"
+            />
+            <button type="submit" className="h-12 w-full rounded-xl bg-red-700 text-sm font-bold text-white active:bg-red-800">
+              Reset Account Data
+            </button>
+          </form>
         </div>
       </section>
     </main>

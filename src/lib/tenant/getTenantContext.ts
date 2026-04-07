@@ -3,7 +3,7 @@ import { cache } from "react";
 
 import { db } from "@/db";
 import { financialConfigs, shops } from "@/db/schema";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 
 export type TenantContext = {
   userId: string;
@@ -25,13 +25,8 @@ export type TenantContext = {
 };
 
 export const getTenantContext = cache(async function getTenantContextImpl(): Promise<TenantContext | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  const user = await getCurrentUser();
+  if (!user) {
     return null;
   }
 

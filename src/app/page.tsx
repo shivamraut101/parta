@@ -16,11 +16,12 @@ import Link from "next/link";
 import { signInWithPassword, signUpWithPassword } from "@/app/auth/actions";
 import { createInitialShop } from "@/app/onboarding/actions";
 import { PasswordField } from "@/components/auth/PasswordField";
+import { AuthSubmitButton } from "@/components/auth/AuthSubmitButton";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { db } from "@/db";
 import { dailySummaries, debtPayments, suppliers } from "@/db/schema";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 import { getDailyStoryFeed } from "@/lib/intelligence/getDailyStoryFeed";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { getBusinessDateString } from "@/lib/time/businessDate";
 
@@ -53,17 +54,15 @@ function getAuthErrorMessage(rawError?: string) {
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const params = await searchParams;
+  const [params, user, tenant] = await Promise.all([
+    searchParams,
+    getCurrentUser(),
+    getTenantContext(),
+  ]);
+
   const authError = getAuthErrorMessage(params?.authError);
   const authNotice = params?.authNotice;
   const prefillEmail = params?.email ?? "";
-
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const tenant = await getTenantContext();
 
   // ── Not logged in ──────────────────────────────────────────────────────────
   if (!tenant) {
@@ -162,12 +161,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 autoComplete="current-password"
                 className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 pr-12 text-base text-stone-900 focus:border-teal-500 focus:outline-none"
               />
-              <button
-                type="submit"
+              <AuthSubmitButton
+                label="Sign In करें"
                 className="h-14 w-full rounded-xl bg-gradient-to-r from-teal-700 to-cyan-700 text-base font-bold text-white shadow-md shadow-teal-800/25 active:from-teal-800 active:to-cyan-800"
-              >
-                Sign In करें
-              </button>
+              />
               <div className="text-center">
                 <Link href="/auth/forgot-password" className="text-sm font-medium text-stone-500 underline decoration-stone-300 underline-offset-4">
                   Password bhool gaye?
@@ -202,12 +199,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 autoComplete="new-password"
                 className="h-14 w-full rounded-xl border border-white/15 bg-white/10 px-4 pr-12 text-base text-white placeholder:text-white/60 focus:border-teal-300 focus:outline-none"
               />
-              <button
-                type="submit"
+              <AuthSubmitButton
+                label="Account बनाएं"
                 className="h-14 w-full rounded-xl bg-white text-base font-bold text-stone-900 active:bg-stone-200"
-              >
-                Account बनाएं
-              </button>
+              />
             </form>
 
             <p className="mt-4 text-center text-xs font-medium text-stone-500">

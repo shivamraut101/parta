@@ -22,7 +22,7 @@ export function NavLinks() {
         <Link
           key={link.href}
           href={link.href}
-          className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+          className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-all active:scale-[0.98] ${
             pathname === link.href
               ? "bg-teal-700 text-white"
               : "text-stone-500 hover:bg-stone-100 hover:text-stone-900"

@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { generateSnapshotAction } from "@/app/admin/actions";
 import { db } from "@/db";
 import { monthlySnapshots } from "@/db/schema";
-import { exportDailyPartaCsvAction } from "@/lib/actions/exports";
 import { ExportCsvButton } from "@/components/reports/ExportCsvButton";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { getBusinessDateString } from "@/lib/time/businessDate";
@@ -81,7 +80,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           </div>
           <button type="submit" className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white">Generate</button>
           <ExportCsvButton
-            action={() => exportDailyPartaCsvAction(thisMonth)}
+            monthYear={thisMonth}
             label="Export Current CSV"
             className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-stone-200 text-sm font-bold text-stone-700"
           />
@@ -110,7 +109,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                   </p>
                 </div>
                 <ExportCsvButton
-                  action={() => exportDailyPartaCsvAction(snap.monthYear)}
+                  monthYear={snap.monthYear}
                   label="Export CSV"
                   className="mt-3 flex h-11 w-full items-center justify-center rounded-xl border-2 border-stone-200 text-sm font-bold text-stone-700"
                 />

@@ -10,7 +10,7 @@ import { debtPayments, shops, supplierTransactions, suppliers } from "@/db/schem
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
 import { assertBusinessDayUnlocked } from "@/lib/lock/assertBusinessDayUnlocked";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
-import { getBusinessDateString } from "@/lib/time/businessDate";
+import { getBusinessDateString, normalizeBusinessDateInput } from "@/lib/time/businessDate";
 
 const addSupplierSchema = z.object({
   name: z.string().trim().min(2).max(160),
@@ -21,12 +21,14 @@ const addSupplierSchema = z.object({
 const purchaseSchema = z.object({
   supplierId: z.string().uuid(),
   amount: z.coerce.number().positive(),
+  date: z.string().min(1),
   note: z.string().trim().optional(),
 });
 
 const paymentSchema = z.object({
   supplierId: z.string().uuid(),
   amount: z.coerce.number().positive(),
+  date: z.string().min(1),
   note: z.string().trim().optional(),
   source: z.enum(["CASH", "UPI"]),
   payViaCc: z.coerce.boolean().optional().default(false),
@@ -35,8 +37,16 @@ const paymentSchema = z.object({
 const returnSchema = z.object({
   supplierId: z.string().uuid(),
   amount: z.coerce.number().positive(),
+  date: z.string().min(1),
   note: z.string().trim().optional(),
 });
+
+function assertNotFutureDate(date: string) {
+  const today = getBusinessDateString();
+  if (date > today) {
+    throw new Error("Future date entries are not allowed.");
+  }
+}
 
 async function assertTenantShopOwnership(shopId: string, userId: string) {
   const [shop] = await db
@@ -110,6 +120,7 @@ export async function recordSupplierPurchase(formData: FormData) {
   const parsed = purchaseSchema.safeParse({
     supplierId: formData.get("supplierId"),
     amount: formData.get("amount"),
+    date: normalizeBusinessDateInput(formData.get("date")),
     note: formData.get("note") ?? undefined,
   });
 
@@ -121,10 +132,12 @@ export async function recordSupplierPurchase(formData: FormData) {
 
   await assertTenantShopOwnership(context.shopId, context.userId);
   await assertSupplierOwnership(payload.supplierId, context.shopId);
-  const businessDate = getBusinessDateString();
+  const businessDate = payload.date;
+  assertNotFutureDate(businessDate);
   await assertBusinessDayUnlocked(context.shopId, businessDate);
 
   const amount = new Decimal(payload.amount);
+  const transactionTimestamp = new Date(`${businessDate}T12:00:00+05:30`);
 
   await db.transaction(async (tx) => {
     await tx.insert(supplierTransactions).values({
@@ -133,6 +146,7 @@ export async function recordSupplierPurchase(formData: FormData) {
       type: "PURCHASE",
       amount: amount.toFixed(2),
       note: payload.note || null,
+      createdAt: transactionTimestamp,
     });
 
     await tx
@@ -170,6 +184,7 @@ export async function recordSupplierPayment(formData: FormData) {
   const parsed = paymentSchema.safeParse({
     supplierId: formData.get("supplierId"),
     amount: formData.get("amount"),
+    date: normalizeBusinessDateInput(formData.get("date")),
     note: formData.get("note") ?? undefined,
     source: formData.get("source"),
     payViaCc: formData.get("payViaCc") === "true",
@@ -183,10 +198,12 @@ export async function recordSupplierPayment(formData: FormData) {
 
   await assertTenantShopOwnership(context.shopId, context.userId);
   await assertSupplierOwnership(payload.supplierId, context.shopId);
-  const businessDate = getBusinessDateString();
+  const businessDate = payload.date;
+  assertNotFutureDate(businessDate);
   await assertBusinessDayUnlocked(context.shopId, businessDate);
 
   const amount = new Decimal(payload.amount);
+  const transactionTimestamp = new Date(`${businessDate}T12:00:00+05:30`);
 
   await db.transaction(async (tx) => {
     await tx.insert(supplierTransactions).values({
@@ -195,6 +212,7 @@ export async function recordSupplierPayment(formData: FormData) {
       type: "PAYMENT",
       amount: amount.toFixed(2),
       note: payload.note || null,
+      createdAt: transactionTimestamp,
     });
 
     await tx
@@ -246,6 +264,7 @@ export async function recordSupplierReturn(formData: FormData) {
   const parsed = returnSchema.safeParse({
     supplierId: formData.get("supplierId"),
     amount: formData.get("amount"),
+    date: normalizeBusinessDateInput(formData.get("date")),
     note: formData.get("note") ?? undefined,
   });
 
@@ -257,10 +276,12 @@ export async function recordSupplierReturn(formData: FormData) {
   await assertTenantShopOwnership(context.shopId, context.userId);
   await assertSupplierOwnership(payload.supplierId, context.shopId);
 
-  const businessDate = getBusinessDateString();
+  const businessDate = payload.date;
+  assertNotFutureDate(businessDate);
   await assertBusinessDayUnlocked(context.shopId, businessDate);
 
   const amount = new Decimal(payload.amount);
+  const transactionTimestamp = new Date(`${businessDate}T12:00:00+05:30`);
 
   await db.transaction(async (tx) => {
     await tx.insert(supplierTransactions).values({
@@ -269,6 +290,7 @@ export async function recordSupplierReturn(formData: FormData) {
       type: "RETURN",
       amount: amount.toFixed(2),
       note: payload.note || null,
+      createdAt: transactionTimestamp,
     });
 
     await tx

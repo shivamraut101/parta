@@ -34,7 +34,7 @@ export async function SiteNav() {
         <form action={signOutAction} className="hidden sm:block">
           <button
             type="submit"
-            className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-50"
+            className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 transition-all hover:bg-stone-50 active:scale-[0.985]"
           >
             Sign Out
           </button>

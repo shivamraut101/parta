@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { DebtOptimizerCard } from "@/app/debt-engine/DebtOptimizerCard";
+import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/db";
 import { debtAccounts } from "@/db/schema";
 import { getInterestLeakMetrics } from "@/lib/debt/getInterestLeakMetrics";
@@ -69,18 +70,22 @@ export default async function DebtEnginePage() {
       </div>
 
       <section className="mb-4 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-100">
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Aaj Ka Drain</p>
-          <p className="mt-1 text-2xl font-black text-red-700">{formatCurrency(leakMetrics.totalPerDay)}</p>
-          <p className="text-xs text-stone-400">per day</p>
-        </div>
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-100">
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Priority</p>
-          <p className="mt-1 text-2xl font-black text-stone-900">
-            {recommendation.priorityTarget === "LOCAL_LOAN" ? "Local" : "Bank"}
-          </p>
-          <p className="text-xs text-stone-400">loan target</p>
-        </div>
+        <Card className="rounded-2xl border-stone-200">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Aaj Ka Drain</p>
+            <p className="mt-1 text-2xl font-black text-red-700">{formatCurrency(leakMetrics.totalPerDay)}</p>
+            <p className="text-xs text-stone-400">per day</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl border-stone-200">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Priority</p>
+            <p className="mt-1 text-2xl font-black text-stone-900">
+              {recommendation.priorityTarget === "LOCAL_LOAN" ? "Local" : "Bank"}
+            </p>
+            <p className="text-xs text-stone-400">loan target</p>
+          </CardContent>
+        </Card>
       </section>
 
       <section>

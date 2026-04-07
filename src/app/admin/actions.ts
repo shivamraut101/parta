@@ -2,14 +2,32 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { dailyClosures, financialConfigs, shopMembers, shops } from "@/db/schema";
+import {
+  adminAuditLogs,
+  auditEvents,
+  corrections,
+  dailyClosures,
+  dailyInterestLogs,
+  dailySummaries,
+  debtAccounts,
+  debtPayments,
+  expenses,
+  financialConfigs,
+  monthlySnapshots,
+  shopMembers,
+  shops,
+  supplierTransactions,
+  suppliers,
+} from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
 import { normalizeAnnualRate, normalizeMonthlyRate } from "@/lib/finance/normalizeRate";
 import { generateMonthlySnapshot } from "@/lib/reports/generateMonthlySnapshot";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { getBusinessDateString, normalizeBusinessDateInput } from "@/lib/time/businessDate";
 
@@ -256,6 +274,11 @@ const inviteSchema = z.object({
   role: z.enum(["MANAGER", "VIEWER"]),
 });
 
+const accountResetSchema = z.object({
+  currentPassword: z.string().trim().min(8),
+  confirmPhrase: z.string().trim().refine((value) => value.toUpperCase() === "RESET"),
+});
+
 export async function inviteMember(formData: FormData) {
   const tenant = await getTenantContext();
   if (!tenant) {
@@ -317,6 +340,120 @@ export async function inviteMember(formData: FormData) {
   });
 
   redirect("/admin?saved=invited");
+}
+
+export async function resetAccountData(formData: FormData) {
+  const tenant = await getTenantContext();
+  if (!tenant) {
+    redirect("/");
+  }
+
+  const parsed = accountResetSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    confirmPhrase: formData.get("confirmPhrase"),
+  });
+
+  if (!parsed.success) {
+    redirect("/admin?error=reset_invalid_input");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    redirect("/admin?error=reset_auth_required");
+  }
+
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: parsed.data.currentPassword,
+  });
+
+  if (verifyError) {
+    redirect("/admin?error=reset_invalid_password");
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Admin and app audit trails for this shop
+      await tx.delete(adminAuditLogs).where(eq(adminAuditLogs.shopId, tenant.shopId));
+      await tx.delete(auditEvents).where(eq(auditEvents.shopId, tenant.shopId));
+
+      // Business data
+      await tx.delete(corrections).where(eq(corrections.shopId, tenant.shopId));
+      await tx.delete(monthlySnapshots).where(eq(monthlySnapshots.shopId, tenant.shopId));
+      await tx.delete(dailyClosures).where(eq(dailyClosures.shopId, tenant.shopId));
+      await tx.delete(dailyInterestLogs).where(eq(dailyInterestLogs.shopId, tenant.shopId));
+      await tx.delete(expenses).where(eq(expenses.shopId, tenant.shopId));
+      await tx.delete(dailySummaries).where(eq(dailySummaries.shopId, tenant.shopId));
+      await tx.delete(debtPayments).where(eq(debtPayments.shopId, tenant.shopId));
+      await tx.delete(debtAccounts).where(eq(debtAccounts.shopId, tenant.shopId));
+      await tx.delete(supplierTransactions).where(eq(supplierTransactions.shopId, tenant.shopId));
+      await tx.delete(suppliers).where(eq(suppliers.shopId, tenant.shopId));
+
+      // Team membership reset: only owner remains
+      await tx.delete(shopMembers).where(eq(shopMembers.shopId, tenant.shopId));
+      await tx
+        .insert(shopMembers)
+        .values({
+          shopId: tenant.shopId,
+          userId: tenant.userId,
+          role: "OWNER",
+          invitedBy: tenant.userId,
+        })
+        .onConflictDoNothing({
+          target: [shopMembers.shopId, shopMembers.userId],
+        });
+
+      // Financial config reset to defaults
+      await tx
+        .insert(financialConfigs)
+        .values({
+          shopId: tenant.shopId,
+          ccLimit: "0",
+          bankInterestRatePa: "0",
+          dailyLocalDrain: "0",
+          localLoanAprMonthly: "0",
+          baseMarginDefault: "20",
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [financialConfigs.shopId],
+          set: {
+            ccLimit: "0",
+            bankInterestRatePa: "0",
+            dailyLocalDrain: "0",
+            localLoanAprMonthly: "0",
+            baseMarginDefault: "20",
+            updatedAt: new Date(),
+          },
+        });
+    });
+
+    await logAuditEvent({
+      shopId: tenant.shopId,
+      actorUserId: tenant.userId,
+      eventType: "ACCOUNT_DATA_RESET",
+      entityType: "SHOP",
+      entityId: tenant.shopId,
+      payload: { resetBy: tenant.userId },
+    });
+
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/daily-parta");
+    revalidatePath("/debt-engine");
+    revalidatePath("/supplier-wall");
+    revalidatePath("/financial-identity");
+    revalidatePath("/reports");
+  } catch (error) {
+    console.error("Account reset failed:", error);
+    redirect("/admin?error=reset_failed");
+  }
+
+  redirect("/admin?saved=account_reset");
 }
 
 export async function removeMember(formData: FormData) {

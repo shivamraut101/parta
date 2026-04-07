@@ -2,27 +2,61 @@
 
 import { Download, Loader } from "lucide-react";
 import { useState } from "react";
+import {
+  exportAdminDailyPartaCsvAction,
+  exportAdminDailyPartaPdfAction,
+  exportAdminDebtEngineCsvAction,
+  exportAdminDebtEnginePdfAction,
+  exportAdminSuppliersCsvAction,
+  exportAdminSuppliersPdfAction,
+} from "@/lib/actions/adminExports";
 
 type ExportResult = { data: string; filename: string; mimeType: string } | { error: string };
+type ExportActionKey =
+  | "admin-daily-csv"
+  | "admin-daily-pdf"
+  | "admin-suppliers-csv"
+  | "admin-suppliers-pdf"
+  | "admin-debt-csv"
+  | "admin-debt-pdf";
 
 type ExportButtonProps = {
   label?: string;
-  action: () => Promise<ExportResult>;
+  actionKey: ExportActionKey;
 };
 
 export function ExportButton({
   label = "Export CSV",
-  action,
+  actionKey,
 }: ExportButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const runExport = async (): Promise<ExportResult> => {
+    switch (actionKey) {
+      case "admin-daily-csv":
+        return exportAdminDailyPartaCsvAction();
+      case "admin-daily-pdf":
+        return exportAdminDailyPartaPdfAction();
+      case "admin-suppliers-csv":
+        return exportAdminSuppliersCsvAction();
+      case "admin-suppliers-pdf":
+        return exportAdminSuppliersPdfAction();
+      case "admin-debt-csv":
+        return exportAdminDebtEngineCsvAction();
+      case "admin-debt-pdf":
+        return exportAdminDebtEnginePdfAction();
+      default:
+        return { error: "Invalid export action" };
+    }
+  };
 
   const handleExport = async () => {
     setLoading(true);
     setError("");
 
     try {
-      const result = await action();
+      const result = await runExport();
 
       if ("error" in result) {
         setError(result.error);
@@ -58,7 +92,7 @@ export function ExportButton({
       <button
         onClick={handleExport}
         disabled={loading}
-        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white transition-all hover:bg-emerald-700 active:scale-[0.985] disabled:opacity-50"
       >
         {loading ? (
           <>

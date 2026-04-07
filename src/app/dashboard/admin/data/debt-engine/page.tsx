@@ -1,6 +1,5 @@
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { ExportButton } from "@/components/admin/ExportButton";
-import { exportAdminDebtEngineCsvAction, exportAdminDebtEnginePdfAction } from "@/lib/actions/adminExports";
 import {
   AdminDataTable,
   type TableColumn,
@@ -138,8 +137,8 @@ export default async function DebtEnginePage({ searchParams }: DebtEnginePagePro
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton action={exportAdminDebtEngineCsvAction} label="Export CSV" />
-            <ExportButton action={exportAdminDebtEnginePdfAction} label="Export PDF" />
+            <ExportButton actionKey="admin-debt-csv" label="Export CSV" />
+            <ExportButton actionKey="admin-debt-pdf" label="Export PDF" />
           </div>
         </div>
 

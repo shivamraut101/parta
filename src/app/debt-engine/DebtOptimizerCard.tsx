@@ -4,6 +4,18 @@ import Decimal from "decimal.js";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { createDebtAccount, recordDebtPayment } from "@/app/debt-engine/actions";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 
 type DebtTargetType = "BANK_CC" | "LOCAL_LOAN";
 type DebtPaymentSource = "CASH" | "UPI";
@@ -221,196 +233,226 @@ export function DebtOptimizerCard({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-gradient-to-br from-stone-900 to-stone-800 p-5 text-white shadow-md">
-        <p className="text-xs font-semibold uppercase tracking-wider text-red-300">
-          Is Page Ko Khola Tab Se Byaaj Gaya
-        </p>
-        <p className="mt-1 text-5xl font-black text-red-300">{fmt(cumulativeLeak)}</p>
-        <p className="mt-1.5 text-sm text-stone-400">
-          Roz ka drain: <span className="font-bold text-stone-200">{fmt(leakBase.mul(24))}</span>
-        </p>
-      </div>
+      <Card className="rounded-2xl border-none bg-gradient-to-br from-stone-900 to-stone-800 text-white shadow-md">
+        <CardContent className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-red-300">
+            Is Page Ko Khola Tab Se Byaaj Gaya
+          </p>
+          <p className="mt-1 text-5xl font-black text-red-300">{fmt(cumulativeLeak)}</p>
+          <p className="mt-1.5 text-sm text-stone-400">
+            Roz ka drain: <span className="font-bold text-stone-200">{fmt(leakBase.mul(24))}</span>
+          </p>
+        </CardContent>
+      </Card>
 
-      <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-200">
-        <p className="text-xs font-bold uppercase tracking-wider text-green-600">
-          Marwari Salah - Aaj Kya Karo
-        </p>
-        <p className="mt-2 text-base font-bold text-green-900">
-          {fmt(new Decimal(recommendation.recommendedPayment || "0"))} daalo{" "}
-          {recommendation.priorityTarget === "LOCAL_LOAN" ? "Local Loan" : "Bank Loan"} mein
-        </p>
-        <p className="mt-1 text-sm text-green-700">
-          Isse mahine mein <span className="font-bold">{fmt(new Decimal(recommendation.savingsPerMonth || "0"))}</span> bachenge
-        </p>
-      </div>
+      <Card className="rounded-2xl border-green-200 bg-green-50">
+        <CardContent className="p-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-green-600">
+            Marwari Salah - Aaj Kya Karo
+          </p>
+          <p className="mt-2 text-base font-bold text-green-900">
+            {fmt(new Decimal(recommendation.recommendedPayment || "0"))} daalo{" "}
+            {recommendation.priorityTarget === "LOCAL_LOAN" ? "Local Loan" : "Bank Loan"} mein
+          </p>
+          <p className="mt-1 text-sm text-green-700">
+            Isse mahine mein <span className="font-bold">{fmt(new Decimal(recommendation.savingsPerMonth || "0"))}</span> bachenge
+          </p>
+        </CardContent>
+      </Card>
 
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-base font-bold text-stone-900">Loan Accounts</p>
-          <button
+      <Card className="rounded-2xl border-stone-200">
+        <CardHeader className="border-b-0 p-5 pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold text-stone-900">Loan Accounts</CardTitle>
+            <Button
+              type="button"
+              onClick={() => setShowAddAccount(true)}
+              className="h-8 rounded-lg bg-teal-700 px-3 text-xs font-bold text-white hover:bg-teal-800"
+            >
+              + Add Loan
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-5 pt-0">
+          {accounts.length === 0 ? (
+            <p className="rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-500">
+              Koi loan account nahi hai. Add Loan se shuru karo.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {accounts.map((account) => (
+                <Card key={account.id} className="rounded-xl border-stone-200">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-bold text-stone-800">{account.name}</p>
+                        <p className="text-xs text-stone-500">{kindLabel(account.kind)}</p>
+                      </div>
+                      <p className="text-base font-black text-stone-900">
+                        {fmt(new Decimal(account.outstandingAmount || "0"))}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl border-stone-200">
+        <CardHeader className="border-b-0 p-5 pb-3">
+          <CardTitle className="text-base font-bold text-stone-900">
+            Payment Darj Karo <span className="text-sm font-normal text-stone-400">(Record Deposit)</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 p-5 pt-0">
+          <div>
+            <Label htmlFor="debtAccount" className="mb-1.5 block text-xs font-semibold text-stone-500">
+              Kaunsa Loan?
+            </Label>
+            <Select
+              id="debtAccount"
+              value={debtAccountId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setDebtAccountId(id);
+                const selected = accounts.find((a) => a.id === id);
+                if (selected) {
+                  setTargetType(selected.kind.startsWith("BANK_") ? "BANK_CC" : "LOCAL_LOAN");
+                }
+              }}
+              className="h-12 rounded-xl border-slate-200 px-4 text-sm text-stone-900"
+            >
+              <option value="">-- Select Loan Account --</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({kindLabel(a.kind)})
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="debtAmount" className="mb-1.5 block text-xs font-semibold text-stone-500">
+                Amount (₹)
+              </Label>
+              <Input
+                id="debtAmount"
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="h-12 rounded-xl border-slate-200 bg-white px-4 text-base font-bold text-stone-900"
+              />
+            </div>
+            <div>
+              <Label htmlFor="debtDate" className="mb-1.5 block text-xs font-semibold text-stone-500">
+                Tarikh
+              </Label>
+              <Input
+                id="debtDate"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className="h-12 rounded-xl border-slate-200 bg-white px-4 text-base text-stone-900"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-2 block text-xs font-semibold text-stone-500">Kaise Dena Hai</Label>
+            <div className="flex gap-2">
+              {(["CASH", "UPI"] as DebtPaymentSource[]).map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant={source === s ? "default" : "secondary"}
+                  onClick={() => setSource(s)}
+                  className={`h-12 flex-1 rounded-xl text-sm font-bold ${
+                    source === s
+                      ? "bg-stone-900 text-white hover:bg-stone-800"
+                      : "border border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+                  }`}
+                >
+                  {s === "CASH" ? "Cash" : "UPI"}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <Button
             type="button"
-            onClick={() => setShowAddAccount(true)}
-            className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-bold text-white"
+            onClick={handleSubmit}
+            disabled={isPending || (accounts.length > 0 && !debtAccountId)}
+            className="h-12 w-full rounded-xl bg-teal-700 text-base font-bold text-white hover:bg-teal-800"
           >
-            + Add Loan
-          </button>
-        </div>
+            {isPending ? "Saving..." : "Karj Chukao"}
+          </Button>
 
-        {accounts.length === 0 ? (
-          <p className="rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-500">
-            Koi loan account nahi hai. Add Loan se shuru karo.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {accounts.map((account) => (
-              <div key={account.id} className="rounded-xl border border-stone-200 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-bold text-stone-800">{account.name}</p>
-                    <p className="text-xs text-stone-500">{kindLabel(account.kind)}</p>
-                  </div>
-                  <p className="text-base font-black text-stone-900">
-                    {fmt(new Decimal(account.outstandingAmount || "0"))}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          {paymentError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              {paymentError}
+            </p>
+          ) : null}
 
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100">
-        <p className="mb-4 text-base font-bold text-stone-900">
-          Payment Darj Karo <span className="text-sm font-normal text-stone-400">(Record Deposit)</span>
-        </p>
+          {saved ? (
+            <p className="text-center text-sm font-semibold text-green-700">Payment recorded</p>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        <div className="mb-3">
-          <label htmlFor="debtAccount" className="mb-1.5 block text-xs font-semibold text-stone-500">
-            Kaunsa Loan?
-          </label>
-          <select
-            id="debtAccount"
-            value={debtAccountId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setDebtAccountId(id);
-              const selected = accounts.find((a) => a.id === id);
-              if (selected) {
-                setTargetType(selected.kind.startsWith("BANK_") ? "BANK_CC" : "LOCAL_LOAN");
-              }
-            }}
-            className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm text-stone-900 focus:border-teal-500 focus:outline-none"
-          >
-            <option value="">-- Select Loan Account --</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({kindLabel(a.kind)})
-              </option>
-            ))}
-          </select>
-        </div>
+      <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
+        <DialogContent className="w-full max-h-[calc(100dvh-2rem)] overflow-hidden rounded-3xl border-stone-200 bg-white p-0 sm:max-w-lg">
+          <DialogHeader className="sticky top-0 z-10 border-b border-stone-100 bg-white px-5 pb-3 pt-4 pr-12">
+            <DialogTitle className="text-base font-bold text-stone-900">Add Loan Account</DialogTitle>
+            <DialogDescription className="text-xs text-stone-500">
+              Fill details to create a new debt account.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="debtAmount" className="mb-1.5 block text-xs font-semibold text-stone-500">
-              Amount (₹)
-            </label>
-            <input
-              id="debtAmount"
-              type="number"
-              step="0.01"
-              min="0"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base font-bold text-stone-900 focus:border-teal-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label htmlFor="debtDate" className="mb-1.5 block text-xs font-semibold text-stone-500">
-              Tarikh
-            </label>
-            <input
-              id="debtDate"
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base text-stone-900 focus:border-teal-500 focus:outline-none"
-            />
-          </div>
-        </div>
+          <div className="hide-scrollbar max-h-[78dvh] overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:max-h-[70vh] sm:pb-6">
 
-        <div className="mb-3">
-          <p className="mb-2 text-xs font-semibold text-stone-500">Kaise Dena Hai</p>
-          <div className="flex gap-2">
-            {(["CASH", "UPI"] as DebtPaymentSource[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSource(s)}
-                className={`h-12 flex-1 rounded-xl text-sm font-bold transition-colors ${
-                  source === s
-                    ? "bg-stone-900 text-white"
-                    : "border-2 border-stone-200 bg-white text-stone-600"
-                }`}
-              >
-                {s === "CASH" ? "Cash" : "UPI"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isPending || (accounts.length > 0 && !debtAccountId)}
-          className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800 disabled:opacity-60"
-        >
-          {isPending ? "Saving..." : "Karj Chukao"}
-        </button>
-
-        {paymentError ? (
-          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-            {paymentError}
-          </p>
-        ) : null}
-
-        {saved ? (
-          <p className="mt-3 text-center text-sm font-semibold text-green-700">Payment recorded</p>
-        ) : null}
-      </div>
-
-      {showAddAccount ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center">
-          <div className="w-full rounded-t-2xl bg-white p-5 pb-8 sm:max-w-md sm:rounded-2xl sm:pb-5">
-            <p className="text-base font-bold text-stone-900">Add Loan Account</p>
             {createError ? (
-              <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                 {createError}
               </p>
             ) : null}
-            <div className="mt-3 space-y-3">
-              <input
+
+            <div className="space-y-3">
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Loan name</Label>
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Loan name"
-                className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
               />
-              <input
+            </div>
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Lender name</Label>
+              <Input
                 value={lenderName}
                 onChange={(e) => setLenderName(e.target.value)}
                 placeholder="Lender name"
-                className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
               />
+            </div>
 
-              <select
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Loan type</Label>
+              <Select
                 value={kind}
                 onChange={(e) => {
                   const next = e.target.value as DebtAccountKind;
                   setKind(next);
                   setRateInputType(defaultRateInputTypeForKind(next));
                 }}
-                className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm"
+                className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm"
               >
                 <optgroup label="Bank Loans">
                   {bankKinds.map((k) => (
@@ -422,134 +464,142 @@ export function DebtOptimizerCard({
                     <option key={k} value={k}>{kindLabel(k)}</option>
                   ))}
                 </optgroup>
-              </select>
+              </Select>
+            </div>
 
-              <select
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Interest type</Label>
+              <Select
                 value={rateInputType}
                 onChange={(e) => setRateInputType(e.target.value as DebtRateInputType)}
-                className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm"
+                className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm"
               >
                 <option value="ANNUAL_PERCENT">Annual %</option>
                 <option value="MONTHLY_PERCENT">Monthly %</option>
                 <option value="DAILY_FIXED">Daily fixed interest</option>
                 <option value="EMI_DAILY">Daily installment</option>
                 <option value="EMI_MONTHLY">Monthly installment</option>
-              </select>
+              </Select>
+            </div>
 
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Principal Amount (original loan)</Label>
+              <Input
+                value={principalAmount}
+                onChange={(e) => setPrincipalAmount(e.target.value)}
+                placeholder="e.g. 100000"
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Outstanding Amount (abhi kitna baki)</Label>
+              <Input
+                value={outstandingAmount}
+                onChange={(e) => setOutstandingAmount(e.target.value)}
+                placeholder="e.g. 86000"
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+              />
+            </div>
+
+            {rateInputType === "ANNUAL_PERCENT" ? (
               <div>
-                <p className="mb-1 text-xs font-semibold text-stone-500">Principal Amount (original loan)</p>
-                <input
-                  value={principalAmount}
-                  onChange={(e) => setPrincipalAmount(e.target.value)}
-                  placeholder="e.g. 100000"
-                  className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Annual Rate %</Label>
+                <Input
+                  value={annualRatePa}
+                  onChange={(e) => setAnnualRatePa(e.target.value)}
+                  placeholder="e.g. 14"
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
                 />
               </div>
+            ) : null}
 
+            {rateInputType === "MONTHLY_PERCENT" ? (
               <div>
-                <p className="mb-1 text-xs font-semibold text-stone-500">Outstanding Amount (abhi kitna baki)</p>
-                <input
-                  value={outstandingAmount}
-                  onChange={(e) => setOutstandingAmount(e.target.value)}
-                  placeholder="e.g. 86000"
-                  className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Monthly Rate %</Label>
+                <Input
+                  value={monthlyRate}
+                  onChange={(e) => setMonthlyRate(e.target.value)}
+                  placeholder="e.g. 5"
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
                 />
               </div>
+            ) : null}
 
-              {rateInputType === "ANNUAL_PERCENT" ? (
+            {rateInputType === "DAILY_FIXED" ? (
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Daily Interest Amount (₹ per day)</Label>
+                <Input
+                  value={dailyFixedInterest}
+                  onChange={(e) => setDailyFixedInterest(e.target.value)}
+                  placeholder="e.g. 600"
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+              </div>
+            ) : null}
+
+            {rateInputType === "EMI_DAILY" || rateInputType === "EMI_MONTHLY" ? (
+              <>
                 <div>
-                  <p className="mb-1 text-xs font-semibold text-stone-500">Annual Rate %</p>
-                  <input
-                    value={annualRatePa}
-                    onChange={(e) => setAnnualRatePa(e.target.value)}
-                    placeholder="e.g. 14"
-                    className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Installment Amount</Label>
+                  <Input
+                    value={installmentAmount}
+                    onChange={(e) => setInstallmentAmount(e.target.value)}
+                    placeholder="e.g. 1200"
+                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
                   />
                 </div>
-              ) : null}
-
-              {rateInputType === "MONTHLY_PERCENT" ? (
                 <div>
-                  <p className="mb-1 text-xs font-semibold text-stone-500">Monthly Rate %</p>
-                  <input
-                    value={monthlyRate}
-                    onChange={(e) => setMonthlyRate(e.target.value)}
-                    placeholder="e.g. 5"
-                    className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
-                  />
-                </div>
-              ) : null}
-
-              {rateInputType === "DAILY_FIXED" ? (
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-stone-500">Daily Interest Amount (₹ per day)</p>
-                  <input
-                    value={dailyFixedInterest}
-                    onChange={(e) => setDailyFixedInterest(e.target.value)}
-                    placeholder="e.g. 600"
-                    className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
-                  />
-                </div>
-              ) : null}
-
-              {rateInputType === "EMI_DAILY" || rateInputType === "EMI_MONTHLY" ? (
-                <>
-                  <div>
-                    <p className="mb-1 text-xs font-semibold text-stone-500">Installment Amount</p>
-                    <input
-                      value={installmentAmount}
-                      onChange={(e) => setInstallmentAmount(e.target.value)}
-                      placeholder="e.g. 1200"
-                      className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
-                    />
-                  </div>
-                  <select
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Installment Frequency</Label>
+                  <Select
                     value={installmentFrequency}
                     onChange={(e) => setInstallmentFrequency(e.target.value as "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET")}
-                    className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm"
+                    className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm"
                   >
                     <option value="DAILY">Daily</option>
                     <option value="WEEKLY">Weekly</option>
                     <option value="MONTHLY">Monthly</option>
                     <option value="BULLET">Bullet</option>
-                  </select>
-                  <div>
-                    <p className="mb-1 text-xs font-semibold text-stone-500">Remaining Installments</p>
-                    <input
-                      value={remainingInstallments}
-                      onChange={(e) => setRemainingInstallments(e.target.value)}
-                      placeholder="e.g. 90"
-                      className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm"
-                    />
-                  </div>
-                </>
-              ) : null}
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Remaining Installments</Label>
+                  <Input
+                    value={remainingInstallments}
+                    onChange={(e) => setRemainingInstallments(e.target.value)}
+                    placeholder="e.g. 90"
+                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                  />
+                </div>
+              </>
+            ) : null}
 
-              <p className="rounded-xl bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
-                Tip: Local daily loan example - choose <span className="font-semibold">Local Daily</span>, then <span className="font-semibold">Daily fixed interest</span>, and enter daily value (like 600).
-              </p>
+            <p className="rounded-xl bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
+              Tip: Local daily loan example - choose <span className="font-semibold">Local Daily</span>, then <span className="font-semibold">Daily fixed interest</span>, and enter daily value (like 600).
+            </p>
             </div>
 
-            <div className="mt-4 flex gap-3">
-              <button
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => setShowAddAccount(false)}
-                className="h-12 flex-1 rounded-xl border-2 border-stone-200 bg-white text-sm font-bold text-stone-700"
+                className="h-12 rounded-xl border border-stone-200 bg-white text-sm font-bold text-stone-700 hover:bg-stone-50"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={handleCreateAccount}
                 disabled={isCreatePending || !name.trim()}
-                className="h-12 flex-1 rounded-xl bg-teal-700 text-sm font-bold text-white disabled:opacity-60"
+                className="h-12 rounded-xl bg-teal-700 text-sm font-bold text-white hover:bg-teal-800"
               >
                 {isCreatePending ? "Saving..." : "Save Loan"}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </DialogContent>
+      </Dialog>
 
       {createSuccess ? (
         <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">

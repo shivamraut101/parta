@@ -34,6 +34,10 @@ export function SupplierWallClient({
   suppliers: SupplierCardData[];
   highlight?: string | null;
 }) {
+  const todayBusinessDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+
   const [isPending, startTransition] = useTransition();
   const [isAddPending, startAddTransition] = useTransition();
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -44,6 +48,7 @@ export function SupplierWallClient({
   } | null>(null);
 
   const [amount, setAmount] = useState("0");
+  const [txDate, setTxDate] = useState(todayBusinessDate);
   const [note, setNote] = useState("");
   const [source, setSource] = useState<"CASH" | "UPI">("CASH");
   const [payViaCc, setPayViaCc] = useState(false);
@@ -65,6 +70,7 @@ export function SupplierWallClient({
     const formData = new FormData();
     formData.set("supplierId", openModal.supplierId);
     formData.set("amount", amount);
+    formData.set("date", txDate);
     formData.set("note", note);
 
     startTransition(async () => {
@@ -80,6 +86,7 @@ export function SupplierWallClient({
 
       setOpenModal(null);
       setAmount("0");
+      setTxDate(todayBusinessDate);
       setNote("");
       setSource("CASH");
       setPayViaCc(false);
@@ -230,6 +237,20 @@ export function SupplierWallClient({
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
                   className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base font-bold text-stone-900 focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="supplierTxDate" className="mb-1.5 block text-xs font-semibold text-stone-500">
+                  Date
+                </label>
+                <input
+                  id="supplierTxDate"
+                  type="date"
+                  value={txDate}
+                  max={todayBusinessDate}
+                  onChange={(event) => setTxDate(event.target.value)}
+                  className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm text-stone-900 focus:border-teal-500 focus:outline-none"
                 />
               </div>
 

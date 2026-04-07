@@ -5,7 +5,6 @@ import {
   type TableSearchParams,
 } from "@/components/admin/AdminDataTable";
 import { ExportButton } from "@/components/admin/ExportButton";
-import { exportAdminDailyPartaCsvAction, exportAdminDailyPartaPdfAction } from "@/lib/actions/adminExports";
 import { requireAdminContext } from "@/lib/admin/adminAuth";
 import { getAllDailySummaries } from "@/lib/admin/adminQueries";
 import { logAdminAction } from "@/lib/admin/adminActions";
@@ -128,8 +127,8 @@ export default async function DailyPartaPage({ searchParams }: DailyPartaPagePro
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton action={exportAdminDailyPartaCsvAction} label="Export CSV" />
-            <ExportButton action={exportAdminDailyPartaPdfAction} label="Export PDF" />
+            <ExportButton actionKey="admin-daily-csv" label="Export CSV" />
+            <ExportButton actionKey="admin-daily-pdf" label="Export PDF" />
           </div>
         </div>
 
