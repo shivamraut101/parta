@@ -22,6 +22,7 @@ function getInstallmentDays(frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET"
 }
 
 function estimateAccountDailyDrain(account: {
+  rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
   outstandingAmount: string;
   annualRatePa: string;
   monthlyRate: string;
@@ -37,19 +38,19 @@ function estimateAccountDailyDrain(account: {
   const installmentAmount = new Decimal(account.installmentAmount || "0");
   const remainingInstallments = new Decimal(account.remainingInstallments || 0);
 
-  if (dailyFixed.gt(0)) {
-    return dailyFixed;
+  if (account.rateInputType === "DAILY_FIXED") {
+    return dailyFixed.gt(0) ? dailyFixed : new Decimal(0);
   }
 
-  if (annual.gt(0)) {
-    return outstanding.mul(annual).div(365);
+  if (account.rateInputType === "ANNUAL_PERCENT") {
+    return annual.gt(0) ? outstanding.mul(annual).div(365) : new Decimal(0);
   }
 
-  if (monthly.gt(0)) {
-    return outstanding.mul(monthly.mul(12)).div(365);
+  if (account.rateInputType === "MONTHLY_PERCENT") {
+    return monthly.gt(0) ? outstanding.mul(monthly.mul(12)).div(365) : new Decimal(0);
   }
 
-  if (installmentAmount.gt(0) && remainingInstallments.gt(0)) {
+  if ((account.rateInputType === "EMI_DAILY" || account.rateInputType === "EMI_MONTHLY") && installmentAmount.gt(0) && remainingInstallments.gt(0)) {
     const totalToPay = installmentAmount.mul(remainingInstallments);
     const interestPortion = Decimal.max(totalToPay.minus(outstanding), 0);
     const remainingDays = remainingInstallments.mul(getInstallmentDays(account.installmentFrequency));
@@ -62,6 +63,7 @@ function estimateAccountDailyDrain(account: {
 export async function getInterestLeakMetrics(shopId: string): Promise<InterestLeakMetrics> {
   let activeAccounts: Array<{
     kind: string;
+    rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
     outstandingAmount: string;
     annualRatePa: string;
     monthlyRate: string;
@@ -75,6 +77,7 @@ export async function getInterestLeakMetrics(shopId: string): Promise<InterestLe
     activeAccounts = await db
       .select({
         kind: debtAccounts.kind,
+        rateInputType: debtAccounts.rateInputType,
         outstandingAmount: debtAccounts.outstandingAmount,
         annualRatePa: debtAccounts.annualRatePa,
         monthlyRate: debtAccounts.monthlyRate,

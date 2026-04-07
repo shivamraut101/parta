@@ -1,11 +1,11 @@
 import Decimal from "decimal.js";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { DebtOptimizerCard } from "@/app/debt-engine/DebtOptimizerCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/db";
-import { debtAccounts } from "@/db/schema";
+import { debtAccountMovements, debtAccounts } from "@/db/schema";
 import { getInterestLeakMetrics } from "@/lib/debt/getInterestLeakMetrics";
 import { getRepaymentRecommendation } from "@/lib/debt/getRepaymentRecommendation";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
@@ -34,12 +34,33 @@ export default async function DebtEnginePage() {
   let accounts: Array<{
     id: string;
     name: string;
+    lenderName: string | null;
     kind: "BANK_CC" | "BANK_TERM_LOAN" | "BANK_OD" | "BANK_BILL_DISCOUNT" | "LOCAL_DAILY" | "LOCAL_MONTHLY" | "LOCAL_BULLET" | "LOCAL_FLEXI";
+    creditLimit: string;
+    principalAmount: string;
     outstandingAmount: string;
+    totalDrawnAmount: string;
+    totalRepaidAmount: string;
     annualRatePa: string;
     monthlyRate: string;
     dailyFixedInterest: string;
+    installmentAmount: string;
+    installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+    remainingInstallments: number;
+    startDate: string | null;
+    maturityDate: string | null;
+    notes: string | null;
     rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
+  }> = [];
+
+  let recentMovements: Array<{
+    id: string;
+    debtAccountId: string;
+    movementType: "OPENING" | "DRAWDOWN" | "REPAYMENT" | "ADJUSTMENT";
+    amount: string;
+    movementDate: string;
+    source: "CASH" | "UPI" | null;
+    notes: string | null;
   }> = [];
 
   try {
@@ -47,11 +68,22 @@ export default async function DebtEnginePage() {
       .select({
         id: debtAccounts.id,
         name: debtAccounts.name,
+        lenderName: debtAccounts.lenderName,
         kind: debtAccounts.kind,
+        creditLimit: debtAccounts.creditLimit,
+        principalAmount: debtAccounts.principalAmount,
         outstandingAmount: debtAccounts.outstandingAmount,
+        totalDrawnAmount: debtAccounts.totalDrawnAmount,
+        totalRepaidAmount: debtAccounts.totalRepaidAmount,
         annualRatePa: debtAccounts.annualRatePa,
         monthlyRate: debtAccounts.monthlyRate,
         dailyFixedInterest: debtAccounts.dailyFixedInterest,
+        installmentAmount: debtAccounts.installmentAmount,
+        installmentFrequency: debtAccounts.installmentFrequency,
+        remainingInstallments: debtAccounts.remainingInstallments,
+        startDate: debtAccounts.startDate,
+        maturityDate: debtAccounts.maturityDate,
+        notes: debtAccounts.notes,
         rateInputType: debtAccounts.rateInputType,
       })
       .from(debtAccounts)
@@ -59,6 +91,25 @@ export default async function DebtEnginePage() {
       .orderBy(asc(debtAccounts.name));
   } catch {
     accounts = [];
+  }
+
+  try {
+    recentMovements = await db
+      .select({
+        id: debtAccountMovements.id,
+        debtAccountId: debtAccountMovements.debtAccountId,
+        movementType: debtAccountMovements.movementType,
+        amount: debtAccountMovements.amount,
+        movementDate: debtAccountMovements.movementDate,
+        source: debtAccountMovements.source,
+        notes: debtAccountMovements.notes,
+      })
+      .from(debtAccountMovements)
+      .where(eq(debtAccountMovements.shopId, tenant.shopId))
+      .orderBy(desc(debtAccountMovements.movementDate), desc(debtAccountMovements.createdAt))
+      .limit(40);
+  } catch {
+    recentMovements = [];
   }
 
   return (
@@ -95,13 +146,25 @@ export default async function DebtEnginePage() {
           accounts={accounts.map((a) => ({
             id: a.id,
             name: a.name,
+            lenderName: a.lenderName,
             kind: a.kind,
+            creditLimit: a.creditLimit,
+            principalAmount: a.principalAmount,
             outstandingAmount: a.outstandingAmount,
+            totalDrawnAmount: a.totalDrawnAmount,
+            totalRepaidAmount: a.totalRepaidAmount,
             annualRatePa: a.annualRatePa,
             monthlyRate: a.monthlyRate,
             dailyFixedInterest: a.dailyFixedInterest,
+            installmentAmount: a.installmentAmount,
+            installmentFrequency: a.installmentFrequency,
+            remainingInstallments: a.remainingInstallments,
+            startDate: a.startDate,
+            maturityDate: a.maturityDate,
+            notes: a.notes,
             rateInputType: a.rateInputType,
           }))}
+          recentMovements={recentMovements}
           recommendation={{
             priorityTarget: recommendation.priorityTarget,
             recommendedPayment: recommendation.recommendedPayment.toString(),

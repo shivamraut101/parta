@@ -164,6 +164,13 @@ export const debtInstallmentFrequencyEnum = pgEnum("debt_installment_frequency",
   "BULLET",
 ]);
 
+export const debtAccountMovementTypeEnum = pgEnum("debt_account_movement_type", [
+  "OPENING",
+  "DRAWDOWN",
+  "REPAYMENT",
+  "ADJUSTMENT",
+]);
+
 export const debtAccounts = pgTable(
   "debt_accounts",
   {
@@ -175,8 +182,11 @@ export const debtAccounts = pgTable(
     lenderName: varchar("lender_name", { length: 160 }),
     kind: debtAccountKindEnum("kind").notNull(),
     rateInputType: debtRateInputTypeEnum("rate_input_type").notNull().default("ANNUAL_PERCENT"),
+    creditLimit: numeric("credit_limit", { precision: 18, scale: 2 }).default("0").notNull(),
     principalAmount: numeric("principal_amount", { precision: 18, scale: 2 }).default("0").notNull(),
     outstandingAmount: numeric("outstanding_amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    totalDrawnAmount: numeric("total_drawn_amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    totalRepaidAmount: numeric("total_repaid_amount", { precision: 18, scale: 2 }).default("0").notNull(),
     annualRatePa: numeric("annual_rate_pa", { precision: 10, scale: 6 }).default("0").notNull(),
     monthlyRate: numeric("monthly_rate", { precision: 10, scale: 6 }).default("0").notNull(),
     dailyFixedInterest: numeric("daily_fixed_interest", { precision: 18, scale: 2 }).default("0").notNull(),
@@ -219,6 +229,31 @@ export const debtPayments = pgTable(
   (table) => ({
     shopDateIdx: index("debt_payments_shop_date_idx").on(table.shopId, table.paymentDate),
     shopAccountIdx: index("debt_payments_shop_account_idx").on(table.shopId, table.debtAccountId),
+  }),
+);
+
+export const debtAccountMovements = pgTable(
+  "debt_account_movements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopId: uuid("shop_id")
+      .notNull()
+      .references(() => shops.id, { onDelete: "cascade" }),
+    debtAccountId: uuid("debt_account_id")
+      .notNull()
+      .references(() => debtAccounts.id, { onDelete: "cascade" }),
+    movementType: debtAccountMovementTypeEnum("movement_type").notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    movementDate: date("movement_date").notNull(),
+    source: debtPaymentSourceEnum("source"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    shopDateIdx: index("debt_account_movements_shop_date_idx").on(table.shopId, table.movementDate),
+    shopAccountIdx: index("debt_account_movements_shop_account_idx").on(table.shopId, table.debtAccountId),
   }),
 );
 
@@ -519,6 +554,7 @@ export type DailySummary = typeof dailySummaries.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
 export type DebtAccount = typeof debtAccounts.$inferSelect;
+export type DebtAccountMovement = typeof debtAccountMovements.$inferSelect;
 export type DailyInterestLog = typeof dailyInterestLogs.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type SupplierTransaction = typeof supplierTransactions.$inferSelect;

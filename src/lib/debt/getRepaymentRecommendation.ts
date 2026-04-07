@@ -30,6 +30,7 @@ function getInstallmentDays(frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET"
 }
 
 function estimateEffectiveAnnualRate(account: {
+  rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
   outstandingAmount: string;
   annualRatePa: string;
   monthlyRate: string;
@@ -41,15 +42,17 @@ function estimateEffectiveAnnualRate(account: {
   const outstanding = new Decimal(account.outstandingAmount || "0");
   if (outstanding.lte(0)) return new Decimal(0);
 
-  const annual = normalizeAnnualRate(account.annualRatePa || "0");
-  if (annual.gt(0)) return annual;
+  if (account.rateInputType === "ANNUAL_PERCENT") {
+    return normalizeAnnualRate(account.annualRatePa || "0");
+  }
 
-  const monthly = normalizeMonthlyRate(account.monthlyRate || "0");
-  if (monthly.gt(0)) return monthly.mul(12);
+  if (account.rateInputType === "MONTHLY_PERCENT") {
+    return normalizeMonthlyRate(account.monthlyRate || "0").mul(12);
+  }
 
-  const dailyFixed = new Decimal(account.dailyFixedInterest || "0");
-  if (dailyFixed.gt(0)) {
-    return dailyFixed.mul(365).div(outstanding);
+  if (account.rateInputType === "DAILY_FIXED") {
+    const dailyFixed = new Decimal(account.dailyFixedInterest || "0");
+    return dailyFixed.gt(0) ? dailyFixed.mul(365).div(outstanding) : new Decimal(0);
   }
 
   const installmentAmount = new Decimal(account.installmentAmount || "0");
@@ -72,6 +75,7 @@ export async function getRepaymentRecommendation(
   let activeAccounts: Array<{
     id: string;
     kind: string;
+    rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
     outstandingAmount: string;
     annualRatePa: string;
     monthlyRate: string;
@@ -86,6 +90,7 @@ export async function getRepaymentRecommendation(
       .select({
         id: debtAccounts.id,
         kind: debtAccounts.kind,
+        rateInputType: debtAccounts.rateInputType,
         outstandingAmount: debtAccounts.outstandingAmount,
         annualRatePa: debtAccounts.annualRatePa,
         monthlyRate: debtAccounts.monthlyRate,

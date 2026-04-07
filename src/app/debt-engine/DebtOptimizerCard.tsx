@@ -3,7 +3,12 @@
 import Decimal from "decimal.js";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { createDebtAccount, recordDebtPayment } from "@/app/debt-engine/actions";
+import {
+  createDebtAccount,
+  recordDebtDrawdown,
+  recordDebtPayment,
+  updateDebtAccount,
+} from "@/app/debt-engine/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -39,12 +44,33 @@ type DebtRateInputType =
 type DebtAccountOption = {
   id: string;
   name: string;
+  lenderName: string | null;
   kind: DebtAccountKind;
+  creditLimit: string;
+  principalAmount: string;
   outstandingAmount: string;
+  totalDrawnAmount: string;
+  totalRepaidAmount: string;
   annualRatePa: string;
   monthlyRate: string;
   dailyFixedInterest: string;
+  installmentAmount: string;
+  installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+  remainingInstallments: number;
+  startDate: string | null;
+  maturityDate: string | null;
+  notes: string | null;
   rateInputType: DebtRateInputType;
+};
+
+type DebtAccountMovement = {
+  id: string;
+  debtAccountId: string;
+  movementType: "OPENING" | "DRAWDOWN" | "REPAYMENT" | "ADJUSTMENT";
+  amount: string;
+  movementDate: string;
+  source: DebtPaymentSource | null;
+  notes: string | null;
 };
 
 function fmt(value: Decimal) {
@@ -66,6 +92,20 @@ function kindLabel(kind: DebtAccountKind) {
     LOCAL_FLEXI: "Local Flexi",
   };
   return map[kind];
+}
+
+function movementLabel(type: DebtAccountMovement["movementType"]) {
+  const map: Record<DebtAccountMovement["movementType"], string> = {
+    OPENING: "Opening",
+    DRAWDOWN: "Take Out",
+    REPAYMENT: "Put Back",
+    ADJUSTMENT: "Manual Adjust",
+  };
+  return map[type];
+}
+
+function isRevolvingKind(kind: DebtAccountKind) {
+  return kind === "BANK_CC" || kind === "BANK_OD" || kind === "LOCAL_FLEXI";
 }
 
 function defaultRateInputTypeForKind(kind: DebtAccountKind): DebtRateInputType {
@@ -93,11 +133,13 @@ export function DebtOptimizerCard({
   today,
   leakPerHour,
   accounts,
+  recentMovements,
   recommendation,
 }: {
   today: string;
   leakPerHour: string;
   accounts: DebtAccountOption[];
+  recentMovements: DebtAccountMovement[];
   recommendation: {
     priorityTarget: DebtTargetType;
     recommendedPayment: string;
@@ -105,7 +147,8 @@ export function DebtOptimizerCard({
   };
 }) {
   const [isPending, startTransition] = useTransition();
-  const [isCreatePending, startCreateTransition] = useTransition();
+  const [isAccountPending, startAccountTransition] = useTransition();
+  const [isDrawPending, startDrawTransition] = useTransition();
 
   const [amount, setAmount] = useState("0");
   const [paymentDate, setPaymentDate] = useState(today);
@@ -115,15 +158,20 @@ export function DebtOptimizerCard({
 
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [saved, setSaved] = useState(false);
-  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showAccountDialog, setShowAccountDialog] = useState(false);
+  const [accountFormMode, setAccountFormMode] = useState<"create" | "edit">("create");
+  const [editingAccountId, setEditingAccountId] = useState("");
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
+  const [drawError, setDrawError] = useState<string | null>(null);
+  const [drawSuccess, setDrawSuccess] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [lenderName, setLenderName] = useState("");
   const [kind, setKind] = useState<DebtAccountKind>("BANK_CC");
   const [rateInputType, setRateInputType] = useState<DebtRateInputType>("ANNUAL_PERCENT");
+  const [creditLimit, setCreditLimit] = useState("0");
   const [principalAmount, setPrincipalAmount] = useState("0");
   const [outstandingAmount, setOutstandingAmount] = useState("0");
   const [annualRatePa, setAnnualRatePa] = useState("0");
@@ -132,6 +180,15 @@ export function DebtOptimizerCard({
   const [installmentAmount, setInstallmentAmount] = useState("0");
   const [installmentFrequency, setInstallmentFrequency] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "BULLET">("MONTHLY");
   const [remainingInstallments, setRemainingInstallments] = useState("0");
+  const [startDate, setStartDate] = useState(today);
+  const [maturityDate, setMaturityDate] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const [drawDebtAccountId, setDrawDebtAccountId] = useState("");
+  const [drawAmount, setDrawAmount] = useState("0");
+  const [drawDate, setDrawDate] = useState(today);
+  const [drawSource, setDrawSource] = useState<DebtPaymentSource>("CASH");
+  const [drawNotes, setDrawNotes] = useState("");
 
   const leakBase = useMemo(() => new Decimal(leakPerHour || "0"), [leakPerHour]);
   const leakPerSecond = useMemo(() => leakBase.div(3600), [leakBase]);
@@ -140,12 +197,69 @@ export function DebtOptimizerCard({
     [leakPerSecond, secondsElapsed],
   );
 
+  const revolvingAccounts = useMemo(
+    () => accounts.filter((a) => isRevolvingKind(a.kind)),
+    [accounts],
+  );
+
+  const effectiveDrawDebtAccountId = drawDebtAccountId || revolvingAccounts[0]?.id || "";
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       setSecondsElapsed((prev) => prev + 1);
     }, 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  function resetAccountForm() {
+    setName("");
+    setLenderName("");
+    setKind("BANK_CC");
+    setRateInputType("ANNUAL_PERCENT");
+    setCreditLimit("0");
+    setPrincipalAmount("0");
+    setOutstandingAmount("0");
+    setAnnualRatePa("0");
+    setMonthlyRate("0");
+    setDailyFixedInterest("0");
+    setInstallmentAmount("0");
+    setInstallmentFrequency("MONTHLY");
+    setRemainingInstallments("0");
+    setStartDate(today);
+    setMaturityDate("");
+    setNotes("");
+    setEditingAccountId("");
+  }
+
+  function openCreateAccountDialog() {
+    setAccountFormMode("create");
+    setAccountError(null);
+    resetAccountForm();
+    setShowAccountDialog(true);
+  }
+
+  function openEditAccountDialog(account: DebtAccountOption) {
+    setAccountFormMode("edit");
+    setAccountError(null);
+    setEditingAccountId(account.id);
+    setName(account.name);
+    setLenderName(account.lenderName || "");
+    setKind(account.kind);
+    setRateInputType(account.rateInputType);
+    setCreditLimit(account.creditLimit || "0");
+    setPrincipalAmount(account.principalAmount || "0");
+    setOutstandingAmount(account.outstandingAmount || "0");
+    setAnnualRatePa(account.annualRatePa || "0");
+    setMonthlyRate(account.monthlyRate || "0");
+    setDailyFixedInterest(account.dailyFixedInterest || "0");
+    setInstallmentAmount(account.installmentAmount || "0");
+    setInstallmentFrequency(account.installmentFrequency || "MONTHLY");
+    setRemainingInstallments(String(account.remainingInstallments || 0));
+    setStartDate(account.startDate || today);
+    setMaturityDate(account.maturityDate || "");
+    setNotes(account.notes || "");
+    setShowAccountDialog(true);
+  }
 
   function handleSubmit() {
     if (accounts.length > 0 && !debtAccountId) {
@@ -179,25 +293,27 @@ export function DebtOptimizerCard({
     });
   }
 
-  function handleCreateAccount() {
-    setCreateError(null);
-    setCreateSuccess(null);
+  function handleSaveAccount() {
+    setAccountError(null);
+    setAccountSuccess(null);
 
     if (!name.trim()) {
-      setCreateError("Loan name required hai.");
+      setAccountError("Loan name required hai.");
       return;
     }
 
-    if (new Decimal(outstandingAmount || "0").lte(0)) {
-      setCreateError("Outstanding amount 0 se bada hona chahiye.");
+    if (accountFormMode === "create" && new Decimal(outstandingAmount || "0").lte(0)) {
+      setAccountError("Outstanding amount 0 se bada hona chahiye.");
       return;
     }
 
     const fd = new FormData();
+    if (accountFormMode === "edit") fd.set("debtAccountId", editingAccountId);
     fd.set("name", name);
     fd.set("lenderName", lenderName);
     fd.set("kind", kind);
     fd.set("rateInputType", rateInputType);
+    fd.set("creditLimit", creditLimit);
     fd.set("principalAmount", principalAmount);
     fd.set("outstandingAmount", outstandingAmount);
     fd.set("annualRatePa", annualRatePa);
@@ -206,34 +322,66 @@ export function DebtOptimizerCard({
     fd.set("installmentAmount", installmentAmount);
     fd.set("installmentFrequency", installmentFrequency);
     fd.set("remainingInstallments", remainingInstallments);
+    fd.set("startDate", startDate);
+    if (maturityDate) fd.set("maturityDate", maturityDate);
+    if (notes.trim()) fd.set("notes", notes.trim());
 
-    startCreateTransition(async () => {
+    startAccountTransition(async () => {
       try {
-        await createDebtAccount(fd);
-        setShowAddAccount(false);
-        setName("");
-        setLenderName("");
-        setKind("BANK_CC");
-        setRateInputType("ANNUAL_PERCENT");
-        setPrincipalAmount("0");
-        setOutstandingAmount("0");
-        setAnnualRatePa("0");
-        setMonthlyRate("0");
-        setDailyFixedInterest("0");
-        setInstallmentAmount("0");
-        setRemainingInstallments("0");
-        setCreateSuccess("Loan account saved successfully.");
-        setTimeout(() => setCreateSuccess(null), 2500);
+        if (accountFormMode === "create") {
+          await createDebtAccount(fd);
+        } else {
+          await updateDebtAccount(fd);
+        }
+        setShowAccountDialog(false);
+        resetAccountForm();
+        setAccountSuccess(accountFormMode === "create" ? "Loan account saved successfully." : "Loan account updated successfully.");
+        setTimeout(() => setAccountSuccess(null), 2500);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Loan save nahi ho paya.";
-        setCreateError(message);
+        setAccountError(message);
+      }
+    });
+  }
+
+  function handleRecordDrawdown() {
+    setDrawError(null);
+    setDrawSuccess(null);
+
+    if (!effectiveDrawDebtAccountId) {
+      setDrawError("CC account select karo.");
+      return;
+    }
+
+    if (new Decimal(drawAmount || "0").lte(0)) {
+      setDrawError("Take-out amount 0 se bada hona chahiye.");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.set("debtAccountId", effectiveDrawDebtAccountId);
+    fd.set("amount", drawAmount);
+    fd.set("date", drawDate);
+    fd.set("source", drawSource);
+    if (drawNotes.trim()) fd.set("notes", drawNotes.trim());
+
+    startDrawTransition(async () => {
+      try {
+        await recordDebtDrawdown(fd);
+        setDrawAmount("0");
+        setDrawNotes("");
+        setDrawSuccess("CC take-out recorded.");
+        setTimeout(() => setDrawSuccess(null), 2500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "CC take-out save nahi ho paya.";
+        setDrawError(message);
       }
     });
   }
 
   return (
     <div className="space-y-4">
-      <Card className="rounded-2xl border-none bg-gradient-to-br from-stone-900 to-stone-800 text-white shadow-md">
+      <Card className="rounded-2xl border-none bg-linear-to-br from-stone-900 to-stone-800 text-white shadow-md">
         <CardContent className="p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-red-300">
             Is Page Ko Khola Tab Se Byaaj Gaya
@@ -266,7 +414,7 @@ export function DebtOptimizerCard({
             <CardTitle className="text-base font-bold text-stone-900">Loan Accounts</CardTitle>
             <Button
               type="button"
-              onClick={() => setShowAddAccount(true)}
+              onClick={openCreateAccountDialog}
               className="h-8 rounded-lg bg-teal-700 px-3 text-xs font-bold text-white hover:bg-teal-800"
             >
               + Add Loan
@@ -288,10 +436,65 @@ export function DebtOptimizerCard({
                         <p className="text-sm font-bold text-stone-800">{account.name}</p>
                         <p className="text-xs text-stone-500">{kindLabel(account.kind)}</p>
                       </div>
-                      <p className="text-base font-black text-stone-900">
-                        {fmt(new Decimal(account.outstandingAmount || "0"))}
-                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => openEditAccountDialog(account)}
+                        className="h-8 rounded-lg border border-stone-200 bg-white px-3 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                      >
+                        Edit
+                      </Button>
                     </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-stone-50 p-2 text-[11px] text-stone-600">
+                      {isRevolvingKind(account.kind) ? (
+                        <>
+                          <p>
+                            Started (CC Limit): <span className="font-bold text-stone-800">{fmt(new Decimal(account.creditLimit || "0"))}</span>
+                          </p>
+                          <p>
+                            Used now: <span className="font-bold text-stone-800">{fmt(new Decimal(account.outstandingAmount || "0"))}</span>
+                          </p>
+                          <p>
+                            Left in CC: <span className="font-bold text-green-700">{fmt(Decimal.max(new Decimal(account.creditLimit || "0").minus(new Decimal(account.outstandingAmount || "0")), 0))}</span>
+                          </p>
+                          <p>
+                            Taken out total: <span className="font-bold text-stone-800">{fmt(new Decimal(account.totalDrawnAmount || "0"))}</span>
+                          </p>
+                          <p>
+                            Put back total: <span className="font-bold text-stone-800">{fmt(new Decimal(account.totalRepaidAmount || "0"))}</span>
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p>
+                            Started: <span className="font-bold text-stone-800">{fmt(new Decimal(account.principalAmount || "0"))}</span>
+                          </p>
+                          <p>
+                            Left: <span className="font-bold text-stone-800">{fmt(new Decimal(account.outstandingAmount || "0"))}</span>
+                          </p>
+                          <p>
+                            Taken out total: <span className="font-bold text-stone-800">{fmt(new Decimal(account.totalDrawnAmount || "0"))}</span>
+                          </p>
+                          <p>
+                            Put back total: <span className="font-bold text-stone-800">{fmt(new Decimal(account.totalRepaidAmount || "0"))}</span>
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {recentMovements.filter((m) => m.debtAccountId === account.id).slice(0, 3).length > 0 ? (
+                      <div className="mt-2 space-y-1 rounded-lg border border-stone-100 bg-white p-2">
+                        {recentMovements.filter((m) => m.debtAccountId === account.id).slice(0, 3).map((movement) => (
+                          <div key={movement.id} className="flex items-center justify-between text-[11px] text-stone-500">
+                            <p>
+                              <span className="font-semibold text-stone-700">{movementLabel(movement.movementType)}</span> · {movement.movementDate}
+                            </p>
+                            <p className="font-bold text-stone-800">{fmt(new Decimal(movement.amount || "0"))}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))}
@@ -303,7 +506,105 @@ export function DebtOptimizerCard({
       <Card className="rounded-2xl border-stone-200">
         <CardHeader className="border-b-0 p-5 pb-3">
           <CardTitle className="text-base font-bold text-stone-900">
-            Payment Darj Karo <span className="text-sm font-normal text-stone-400">(Record Deposit)</span>
+            CC Flow Tracker <span className="text-sm font-normal text-stone-400">(Take Out)</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 p-5 pt-0">
+          <div>
+            <Label className="mb-1.5 block text-xs font-semibold text-stone-500">CC/OD/Flexi Account</Label>
+            <Select
+              value={effectiveDrawDebtAccountId}
+              onChange={(e) => setDrawDebtAccountId(e.target.value)}
+              className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm"
+            >
+              <option value="">-- Select CC Account --</option>
+              {revolvingAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({kindLabel(a.kind)})
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Take Out Amount (₹)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={drawAmount}
+                onChange={(e) => setDrawAmount(e.target.value)}
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Tarikh</Label>
+              <Input
+                type="date"
+                value={drawDate}
+                onChange={(e) => setDrawDate(e.target.value)}
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-2 block text-xs font-semibold text-stone-500">Source</Label>
+            <div className="flex gap-2">
+              {(["CASH", "UPI"] as DebtPaymentSource[]).map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant={drawSource === s ? "default" : "secondary"}
+                  onClick={() => setDrawSource(s)}
+                  className={`h-10 flex-1 rounded-xl text-sm font-bold ${
+                    drawSource === s
+                      ? "bg-stone-900 text-white hover:bg-stone-800"
+                      : "border border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+                  }`}
+                >
+                  {s}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Notes (optional)</Label>
+            <Input
+              value={drawNotes}
+              onChange={(e) => setDrawNotes(e.target.value)}
+              placeholder="Kis kaam ke liye nikala"
+              className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+            />
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleRecordDrawdown}
+            disabled={isDrawPending || !effectiveDrawDebtAccountId}
+            className="h-12 w-full rounded-xl bg-amber-600 text-base font-bold text-white hover:bg-amber-700"
+          >
+            {isDrawPending ? "Saving..." : "CC Se Nikalo"}
+          </Button>
+
+          {drawError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              {drawError}
+            </p>
+          ) : null}
+
+          {drawSuccess ? (
+            <p className="text-center text-sm font-semibold text-green-700">{drawSuccess}</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl border-stone-200">
+        <CardHeader className="border-b-0 p-5 pb-3">
+          <CardTitle className="text-base font-bold text-stone-900">
+            Put Back / Repayment <span className="text-sm font-normal text-stone-400">(CC me dalo ya loan chukao)</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-5 pt-0">
@@ -405,20 +706,32 @@ export function DebtOptimizerCard({
         </CardContent>
       </Card>
 
-      <Dialog open={showAddAccount} onOpenChange={setShowAddAccount}>
+      <Dialog
+        open={showAccountDialog}
+        onOpenChange={(open) => {
+          setShowAccountDialog(open);
+          if (!open) {
+            setAccountError(null);
+          }
+        }}
+      >
         <DialogContent className="w-full max-h-[calc(100dvh-2rem)] overflow-hidden rounded-3xl border-stone-200 bg-white p-0 sm:max-w-lg">
           <DialogHeader className="sticky top-0 z-10 border-b border-stone-100 bg-white px-5 pb-3 pt-4 pr-12">
-            <DialogTitle className="text-base font-bold text-stone-900">Add Loan Account</DialogTitle>
+            <DialogTitle className="text-base font-bold text-stone-900">
+              {accountFormMode === "create" ? "Add Loan Account" : "Edit Loan Account"}
+            </DialogTitle>
             <DialogDescription className="text-xs text-stone-500">
-              Fill details to create a new debt account.
+              {accountFormMode === "create"
+                ? "Fill details to create a new debt account."
+                : "Update account details to keep CC and debt numbers accurate."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="hide-scrollbar max-h-[78dvh] overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:max-h-[70vh] sm:pb-6">
 
-            {createError ? (
+            {accountError ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                {createError}
+                {accountError}
               </p>
             ) : null}
 
@@ -451,6 +764,9 @@ export function DebtOptimizerCard({
                   const next = e.target.value as DebtAccountKind;
                   setKind(next);
                   setRateInputType(defaultRateInputTypeForKind(next));
+                  if (next === "BANK_CC" || next === "BANK_OD") {
+                    setCreditLimit((prev) => (new Decimal(prev || "0").gt(0) ? prev : principalAmount));
+                  }
                 }}
                 className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm"
               >
@@ -466,6 +782,18 @@ export function DebtOptimizerCard({
                 </optgroup>
               </Select>
             </div>
+
+            {kind === "BANK_CC" || kind === "BANK_OD" ? (
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Credit Limit (CC limit)</Label>
+                <Input
+                  value={creditLimit}
+                  onChange={(e) => setCreditLimit(e.target.value)}
+                  placeholder="e.g. 500000"
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+              </div>
+            ) : null}
 
             <div>
               <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Interest type</Label>
@@ -500,6 +828,27 @@ export function DebtOptimizerCard({
                 placeholder="e.g. 86000"
                 className="h-12 rounded-xl border-slate-200 px-4 text-sm"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Start Date</Label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Maturity Date (optional)</Label>
+                <Input
+                  type="date"
+                  value={maturityDate}
+                  onChange={(e) => setMaturityDate(e.target.value)}
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+              </div>
             </div>
 
             {rateInputType === "ANNUAL_PERCENT" ? (
@@ -575,35 +924,45 @@ export function DebtOptimizerCard({
             ) : null}
 
             <p className="rounded-xl bg-stone-50 px-3 py-2 text-[11px] text-stone-500">
-              Tip: Local daily loan example - choose <span className="font-semibold">Local Daily</span>, then <span className="font-semibold">Daily fixed interest</span>, and enter daily value (like 600).
+              Tip: CC account me &quot;Credit Limit&quot;, &quot;Outstanding&quot;, aur tracker card ke through &quot;Take Out&quot; + &quot;Put Back&quot; maintain karo, tab started/left numbers accurate rahenge.
             </p>
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Notes (optional)</Label>
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Extra context"
+                className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+              />
+            </div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setShowAddAccount(false)}
+                onClick={() => setShowAccountDialog(false)}
                 className="h-12 rounded-xl border border-stone-200 bg-white text-sm font-bold text-stone-700 hover:bg-stone-50"
               >
                 Cancel
               </Button>
               <Button
                 type="button"
-                onClick={handleCreateAccount}
-                disabled={isCreatePending || !name.trim()}
+                onClick={handleSaveAccount}
+                disabled={isAccountPending || !name.trim()}
                 className="h-12 rounded-xl bg-teal-700 text-sm font-bold text-white hover:bg-teal-800"
               >
-                {isCreatePending ? "Saving..." : "Save Loan"}
+                {isAccountPending ? "Saving..." : accountFormMode === "create" ? "Save Loan" : "Update Loan"}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {createSuccess ? (
+      {accountSuccess ? (
         <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">
-          {createSuccess}
+          {accountSuccess}
         </p>
       ) : null}
     </div>
