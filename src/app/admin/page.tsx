@@ -110,10 +110,10 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <p className="mb-3 text-base font-bold text-stone-900">Financial Control</p>
           <form action={updateFinancialSettings} className="space-y-3">
             <input id="ccLimit" name="ccLimit" defaultValue={tenant.financialConfig.ccLimit} required placeholder="CC Limit" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="bankInterestRatePa" name="bankInterestRatePa" defaultValue={tenant.financialConfig.bankInterestRatePa} required placeholder="Bank Interest Annual" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
+            <input id="bankInterestRatePa" name="bankInterestRatePa" defaultValue={String(Number(tenant.financialConfig.bankInterestRatePa) * 100)} required placeholder="Bank Interest Annual %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
             <input id="dailyLocalDrain" name="dailyLocalDrain" defaultValue={tenant.financialConfig.dailyLocalDrain} required placeholder="Daily Local Drain" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="localLoanAprMonthly" name="localLoanAprMonthly" defaultValue={tenant.financialConfig.localLoanAprMonthly} required placeholder="Local Loan Monthly" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="baseMarginDefault" name="baseMarginDefault" defaultValue={tenant.financialConfig.baseMarginDefault} required placeholder="Base Margin %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
+            <input id="localLoanAprMonthly" name="localLoanAprMonthly" defaultValue={String(Number(tenant.financialConfig.localLoanAprMonthly) * 100)} required placeholder="Local Loan Monthly %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
+            <input id="baseMarginDefault" name="baseMarginDefault" defaultValue={String(Number(tenant.financialConfig.baseMarginDefault) * 100)} required placeholder="Base Margin %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
             <button type="submit" className="h-12 w-full rounded-xl bg-emerald-700 text-sm font-bold text-white">Save Financial</button>
           </form>
         </div>

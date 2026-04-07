@@ -70,7 +70,7 @@ export default async function FinancialIdentityPage({ searchParams }: PageProps)
 
           <div>
             <label htmlFor="bankInterestRatePa" className="mb-1.5 block text-xs font-semibold text-stone-500">Bank Interest Rate - Annual %</label>
-            <input id="bankInterestRatePa" name="bankInterestRatePa" type="number" step="0.000001" min="0" defaultValue={tenant.financialConfig.bankInterestRatePa} required className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none" />
+            <input id="bankInterestRatePa" name="bankInterestRatePa" type="number" step="0.01" min="0" defaultValue={String(Number(tenant.financialConfig.bankInterestRatePa) * 100)} required className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none" />
           </div>
 
           <div>
