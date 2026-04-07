@@ -15,6 +15,20 @@
       "when": 1775238178442,
       "tag": "0001_wild_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775481798694,
+      "tag": "0002_woozy_loa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775501442864,
+      "tag": "0003_groovy_rafael_vega",
+      "breakpoints": true
     }
   ]
 }

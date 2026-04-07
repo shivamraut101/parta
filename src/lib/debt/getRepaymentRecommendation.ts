@@ -2,7 +2,7 @@ import Decimal from "decimal.js";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { dailySummaries, debtPayments, financialConfigs } from "@/db/schema";
+import { dailySummaries, debtAccounts, debtPayments, financialConfigs } from "@/db/schema";
 import { normalizeAnnualRate, normalizeMonthlyRate } from "@/lib/finance/normalizeRate";
 
 export type DebtTarget = "BANK_CC" | "LOCAL_LOAN";
@@ -22,9 +22,84 @@ function annualizeLocalRate(monthlyRate: Decimal): Decimal {
   return monthlyRate.mul(12);
 }
 
+function getInstallmentDays(frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET") {
+  if (frequency === "DAILY") return 1;
+  if (frequency === "WEEKLY") return 7;
+  if (frequency === "MONTHLY") return 30;
+  return 30;
+}
+
+function estimateEffectiveAnnualRate(account: {
+  outstandingAmount: string;
+  annualRatePa: string;
+  monthlyRate: string;
+  dailyFixedInterest: string;
+  installmentAmount: string;
+  remainingInstallments: number;
+  installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+}) {
+  const outstanding = new Decimal(account.outstandingAmount || "0");
+  if (outstanding.lte(0)) return new Decimal(0);
+
+  const annual = normalizeAnnualRate(account.annualRatePa || "0");
+  if (annual.gt(0)) return annual;
+
+  const monthly = normalizeMonthlyRate(account.monthlyRate || "0");
+  if (monthly.gt(0)) return monthly.mul(12);
+
+  const dailyFixed = new Decimal(account.dailyFixedInterest || "0");
+  if (dailyFixed.gt(0)) {
+    return dailyFixed.mul(365).div(outstanding);
+  }
+
+  const installmentAmount = new Decimal(account.installmentAmount || "0");
+  const remainingInstallments = new Decimal(account.remainingInstallments || 0);
+  if (installmentAmount.gt(0) && remainingInstallments.gt(0)) {
+    const totalToPay = installmentAmount.mul(remainingInstallments);
+    const interestPortion = Decimal.max(totalToPay.minus(outstanding), 0);
+    const remainingDays = remainingInstallments.mul(getInstallmentDays(account.installmentFrequency));
+    if (remainingDays.lte(0)) return new Decimal(0);
+    const dailyInterest = interestPortion.div(remainingDays);
+    return dailyInterest.mul(365).div(outstanding);
+  }
+
+  return new Decimal(0);
+}
+
 export async function getRepaymentRecommendation(
   shopId: string,
 ): Promise<RepaymentRecommendation> {
+  let activeAccounts: Array<{
+    id: string;
+    kind: string;
+    outstandingAmount: string;
+    annualRatePa: string;
+    monthlyRate: string;
+    dailyFixedInterest: string;
+    installmentAmount: string;
+    remainingInstallments: number;
+    installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+  }> = [];
+
+  try {
+    activeAccounts = await db
+      .select({
+        id: debtAccounts.id,
+        kind: debtAccounts.kind,
+        outstandingAmount: debtAccounts.outstandingAmount,
+        annualRatePa: debtAccounts.annualRatePa,
+        monthlyRate: debtAccounts.monthlyRate,
+        dailyFixedInterest: debtAccounts.dailyFixedInterest,
+        installmentAmount: debtAccounts.installmentAmount,
+        remainingInstallments: debtAccounts.remainingInstallments,
+        installmentFrequency: debtAccounts.installmentFrequency,
+      })
+      .from(debtAccounts)
+      .where(and(eq(debtAccounts.shopId, shopId), eq(debtAccounts.isActive, true)));
+  } catch {
+    activeAccounts = [];
+  }
+
   const [config] = await db
     .select({
       ccLimit: financialConfigs.ccLimit,
@@ -83,6 +158,36 @@ export async function getRepaymentRecommendation(
   const idleCash = new Decimal(latestSummary?.totalSalesCash ?? "0").add(
     new Decimal(latestSummary?.totalSalesUpi ?? "0"),
   );
+
+  if (activeAccounts.length > 0) {
+    const candidates = activeAccounts.map((account) => {
+      const annualRate = estimateEffectiveAnnualRate(account);
+      const outstanding = new Decimal(account.outstandingAmount || "0");
+      return {
+        annualRate,
+        outstanding,
+        targetType: account.kind.startsWith("BANK_") ? "BANK_CC" as DebtTarget : "LOCAL_LOAN" as DebtTarget,
+      };
+    });
+
+    const sorted = candidates.sort((a, b) => b.annualRate.comparedTo(a.annualRate));
+    const top = sorted[0];
+    const recommendedPayment = Decimal.min(idleCash, top?.outstanding ?? 0);
+    const annualRate = top?.annualRate ?? new Decimal(0);
+    const savingsPerDay = recommendedPayment.mul(annualRate).div(365);
+    const savingsPerMonth = savingsPerDay.mul(30);
+
+    return {
+      priorityTarget: top?.targetType ?? "BANK_CC",
+      bankAnnualRate: bankRate,
+      localAnnualRate: localRate,
+      annualRate,
+      idleCash,
+      recommendedPayment,
+      savingsPerDay,
+      savingsPerMonth,
+    };
+  }
 
   const ccLimit = new Decimal(config.ccLimit);
   const bankOutstanding = Decimal.max(ccLimit.minus(bankPaidAgg?.total ?? "0"), 0);

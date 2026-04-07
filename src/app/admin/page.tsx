@@ -103,10 +103,20 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <p className="mb-3 text-base font-bold text-stone-900">Team Management</p>
           <form action={inviteMember} className="space-y-3">
             <input id="inviteEmail" name="email" type="email" required placeholder="staff@example.com" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <select id="inviteRole" name="role" required className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm">
-              <option value="VIEWER">Viewer</option>
-              <option value="MANAGER">Manager</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: "VIEWER", label: "Viewer", desc: "Dekh sakta hai" },
+                { value: "MANAGER", label: "Manager", desc: "Edit kar sakta hai" },
+              ].map((opt) => (
+                <label key={opt.value} className="relative cursor-pointer">
+                  <input type="radio" name="role" value={opt.value} defaultChecked={opt.value === "VIEWER"} className="peer sr-only" />
+                  <div className="rounded-xl border-2 border-stone-200 bg-white px-3 py-2.5 text-center transition-colors peer-checked:border-teal-500 peer-checked:bg-teal-50">
+                    <p className="text-sm font-bold text-stone-800 peer-checked:text-teal-700">{opt.label}</p>
+                    <p className="text-[11px] text-stone-400">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
             <button type="submit" className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white">Send Invite</button>
           </form>
 

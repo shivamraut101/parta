@@ -35,7 +35,7 @@ export function BottomNav() {
   return (
     <>
       {/* ── Fixed bottom bar (mobile only) ── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-stretch border-t border-stone-200 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)] sm:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-[60] flex h-16 items-stretch border-t border-stone-200 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)] sm:hidden">
         {mainLinks.map((link) => {
           const Icon = link.icon;
           const active = pathname === link.href;
@@ -64,11 +64,15 @@ export function BottomNav() {
         {/* More button */}
         <button
           type="button"
-          onClick={() => setMoreOpen(true)}
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-stone-400 active:text-stone-700"
+          onClick={() => setMoreOpen((prev) => !prev)}
+          className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${
+            moreOpen ? "text-teal-700" : "text-stone-400 active:text-stone-700"
+          }`}
         >
-          <span className="flex h-7 w-12 items-center justify-center rounded-full">
-            <MoreHorizontal size={20} strokeWidth={1.8} />
+          <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
+            moreOpen ? "bg-teal-50" : ""
+          }`}>
+            <MoreHorizontal size={20} strokeWidth={moreOpen ? 2.5 : 1.8} />
           </span>
           <span>Aur</span>
         </button>
@@ -77,12 +81,12 @@ export function BottomNav() {
       {/* ── More overlay ── */}
       {moreOpen ? (
         <div
-          className="fixed inset-0 z-50 sm:hidden"
+          className="fixed inset-0 bottom-16 z-50 flex flex-col justify-end sm:hidden"
           onClick={() => setMoreOpen(false)}
         >
-          <div className="absolute inset-0 bg-black/50" />
+          <div className="absolute inset-0 bg-black/50 pointer-events-none" />
           <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white px-4 pb-10 pt-4"
+            className="relative z-10 rounded-t-3xl bg-white px-4 pb-6 pt-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drag handle */}
@@ -93,7 +97,7 @@ export function BottomNav() {
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors"
               >
                 <X size={18} />
               </button>
@@ -103,9 +107,9 @@ export function BottomNav() {
               <Link
                 href="/financial-identity"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50"
+                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700 shrink-0">
                   <Wallet size={20} />
                 </span>
                 <div>
@@ -117,9 +121,9 @@ export function BottomNav() {
               <Link
                 href="/reports"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50"
+                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 shrink-0">
                   <BarChart3 size={20} />
                 </span>
                 <div>
@@ -131,9 +135,9 @@ export function BottomNav() {
               <Link
                 href="/admin"
                 onClick={() => setMoreOpen(false)}
-                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50"
+                className="flex items-center gap-3 rounded-2xl p-3 active:bg-stone-50 hover:bg-stone-50 transition-colors"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-stone-100 text-stone-600 shrink-0">
                   <Settings size={20} />
                 </span>
                 <div>
@@ -142,12 +146,12 @@ export function BottomNav() {
                 </div>
               </Link>
 
-              <form action={signOutAction}>
+              <form action={signOutAction} className="pt-2 border-t border-stone-200">
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 rounded-2xl p-3 active:bg-rose-50"
+                  className="flex w-full items-center gap-3 rounded-2xl p-3 active:bg-rose-50 hover:bg-rose-50 transition-colors"
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 shrink-0">
                     <LogOut size={20} />
                   </span>
                   <div className="text-left">

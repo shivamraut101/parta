@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { LOCAL_DAILY_LOAN_PAYMENT_DESC } from "@/app/daily-parta/constants";
 import { db } from "@/db";
 import { corrections, dailySummaries, expenses, shops } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
@@ -25,6 +26,8 @@ const dailyEntrySchema = z.object({
   totalSalesCash: z.coerce.number().min(0),
   totalSalesUpi: z.coerce.number().min(0),
   marginApplied: z.coerce.number().min(10).max(100),
+  includeLocalDailyLoanPayment: z.coerce.boolean().default(false),
+  localDailyLoanPayment: z.coerce.number().min(0).default(0),
 });
 
 const expenseSchema = z.object({
@@ -57,6 +60,8 @@ export async function saveDailyEntry(formData: FormData) {
     totalSalesCash: formData.get("totalSalesCash"),
     totalSalesUpi: formData.get("totalSalesUpi"),
     marginApplied: formData.get("marginApplied"),
+    includeLocalDailyLoanPayment: formData.get("includeLocalDailyLoanPayment") || "false",
+    localDailyLoanPayment: formData.get("localDailyLoanPayment") || "0",
   });
 
   if (!parsed.success) {
@@ -70,6 +75,9 @@ export async function saveDailyEntry(formData: FormData) {
 
   const totalSales = new Decimal(payload.totalSalesCash).add(payload.totalSalesUpi);
   const estimatedGrossProfit = totalSales.mul(new Decimal(payload.marginApplied).div(100));
+  const localDailyLoanPayment = payload.includeLocalDailyLoanPayment
+    ? new Decimal(payload.localDailyLoanPayment)
+    : new Decimal(0);
 
   await db
     .insert(dailySummaries)
@@ -92,6 +100,28 @@ export async function saveDailyEntry(formData: FormData) {
       },
     });
 
+  // Keep a single editable daily loan payment marker row so re-saving updates the value.
+  await db
+    .delete(expenses)
+    .where(
+      and(
+        eq(expenses.shopId, context.shopId),
+        eq(expenses.expenseDate, payload.date),
+        eq(expenses.category, "MISC"),
+        eq(expenses.description, LOCAL_DAILY_LOAN_PAYMENT_DESC),
+      ),
+    );
+
+  if (localDailyLoanPayment.gt(0)) {
+    await db.insert(expenses).values({
+      shopId: context.shopId,
+      expenseDate: payload.date,
+      amount: localDailyLoanPayment.toString(),
+      category: "MISC",
+      description: LOCAL_DAILY_LOAN_PAYMENT_DESC,
+    });
+  }
+
   await logAuditEvent({
     shopId: context.shopId,
     actorUserId: context.userId,
@@ -104,6 +134,7 @@ export async function saveDailyEntry(formData: FormData) {
       totalSalesUpi: payload.totalSalesUpi,
       marginApplied: payload.marginApplied,
       estimatedGrossProfit: estimatedGrossProfit.toFixed(2),
+      localDailyLoanPayment: localDailyLoanPayment.toString(),
     },
   });
 
@@ -180,7 +211,15 @@ export async function voidDailyEntry(formData: FormData) {
   const { summaryId, reason } = parsed.data;
 
   const [summary] = await db
-    .select({ id: dailySummaries.id, summaryDate: dailySummaries.summaryDate, isVoided: dailySummaries.isVoided })
+    .select({
+      id: dailySummaries.id,
+      summaryDate: dailySummaries.summaryDate,
+      isVoided: dailySummaries.isVoided,
+      totalSalesCash: dailySummaries.totalSalesCash,
+      totalSalesUpi: dailySummaries.totalSalesUpi,
+      marginApplied: dailySummaries.marginApplied,
+      estimatedGrossProfit: dailySummaries.estimatedGrossProfit,
+    })
     .from(dailySummaries)
     .where(and(eq(dailySummaries.id, summaryId), eq(dailySummaries.shopId, context.shopId)))
     .limit(1);
@@ -195,18 +234,20 @@ export async function voidDailyEntry(formData: FormData) {
 
   await assertBusinessDayUnlocked(context.shopId, summary.summaryDate);
 
+  const voidedAt = new Date();
+
   await db
     .update(dailySummaries)
-    .set({ isVoided: true, voidReason: reason })
+    .set({ isVoided: true, voidReason: reason, updatedAt: voidedAt })
     .where(eq(dailySummaries.id, summaryId));
 
-  await db.insert(corrections).values({
+  const [correction] = await db.insert(corrections).values({
     shopId: context.shopId,
     entityType: "DAILY_SUMMARY",
     entityId: summaryId,
     reason,
     correctedBy: context.userId,
-  });
+  }).returning({ id: corrections.id });
 
   await logAuditEvent({
     shopId: context.shopId,
@@ -215,7 +256,17 @@ export async function voidDailyEntry(formData: FormData) {
     eventType: "DAILY_SUMMARY_VOIDED",
     entityType: "DAILY_SUMMARY",
     entityId: summaryId,
-    payload: { reason },
+    payload: {
+      reason,
+      correctionId: correction?.id,
+      voidedAt: voidedAt.toISOString(),
+      preVoid: {
+        totalSalesCash: summary.totalSalesCash,
+        totalSalesUpi: summary.totalSalesUpi,
+        marginApplied: summary.marginApplied,
+        estimatedGrossProfit: summary.estimatedGrossProfit,
+      },
+    },
   });
 
   revalidatePath("/daily-parta");

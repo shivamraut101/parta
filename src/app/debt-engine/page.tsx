@@ -1,7 +1,10 @@
 import Decimal from "decimal.js";
+import { and, asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { DebtOptimizerCard } from "@/app/debt-engine/DebtOptimizerCard";
+import { db } from "@/db";
+import { debtAccounts } from "@/db/schema";
 import { getInterestLeakMetrics } from "@/lib/debt/getInterestLeakMetrics";
 import { getRepaymentRecommendation } from "@/lib/debt/getRepaymentRecommendation";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
@@ -27,6 +30,35 @@ export default async function DebtEnginePage() {
 
   const recommendation = await getRepaymentRecommendation(tenant.shopId);
   const leakMetrics = await getInterestLeakMetrics(tenant.shopId);
+  let accounts: Array<{
+    id: string;
+    name: string;
+    kind: "BANK_CC" | "BANK_TERM_LOAN" | "BANK_OD" | "BANK_BILL_DISCOUNT" | "LOCAL_DAILY" | "LOCAL_MONTHLY" | "LOCAL_BULLET" | "LOCAL_FLEXI";
+    outstandingAmount: string;
+    annualRatePa: string;
+    monthlyRate: string;
+    dailyFixedInterest: string;
+    rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
+  }> = [];
+
+  try {
+    accounts = await db
+      .select({
+        id: debtAccounts.id,
+        name: debtAccounts.name,
+        kind: debtAccounts.kind,
+        outstandingAmount: debtAccounts.outstandingAmount,
+        annualRatePa: debtAccounts.annualRatePa,
+        monthlyRate: debtAccounts.monthlyRate,
+        dailyFixedInterest: debtAccounts.dailyFixedInterest,
+        rateInputType: debtAccounts.rateInputType,
+      })
+      .from(debtAccounts)
+      .where(and(eq(debtAccounts.shopId, tenant.shopId), eq(debtAccounts.isActive, true)))
+      .orderBy(asc(debtAccounts.name));
+  } catch {
+    accounts = [];
+  }
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-24 pt-4">
@@ -55,6 +87,16 @@ export default async function DebtEnginePage() {
         <DebtOptimizerCard
           today={getBusinessDateString()}
           leakPerHour={leakMetrics.totalPerHour.toString()}
+          accounts={accounts.map((a) => ({
+            id: a.id,
+            name: a.name,
+            kind: a.kind,
+            outstandingAmount: a.outstandingAmount,
+            annualRatePa: a.annualRatePa,
+            monthlyRate: a.monthlyRate,
+            dailyFixedInterest: a.dailyFixedInterest,
+            rateInputType: a.rateInputType,
+          }))}
           recommendation={{
             priorityTarget: recommendation.priorityTarget,
             recommendedPayment: recommendation.recommendedPayment.toString(),

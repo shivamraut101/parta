@@ -2,7 +2,7 @@ import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { debtPayments, financialConfigs } from "@/db/schema";
+import { debtAccounts, debtPayments, financialConfigs } from "@/db/schema";
 import { normalizeAnnualRate, normalizeMonthlyRate } from "@/lib/finance/normalizeRate";
 
 export type InterestLeakMetrics = {
@@ -14,7 +14,112 @@ export type InterestLeakMetrics = {
   totalPerHour: Decimal;
 };
 
+function getInstallmentDays(frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET") {
+  if (frequency === "DAILY") return 1;
+  if (frequency === "WEEKLY") return 7;
+  if (frequency === "MONTHLY") return 30;
+  return 30;
+}
+
+function estimateAccountDailyDrain(account: {
+  outstandingAmount: string;
+  annualRatePa: string;
+  monthlyRate: string;
+  dailyFixedInterest: string;
+  installmentAmount: string;
+  remainingInstallments: number;
+  installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+}) {
+  const outstanding = new Decimal(account.outstandingAmount || "0");
+  const annual = normalizeAnnualRate(account.annualRatePa || "0");
+  const monthly = normalizeMonthlyRate(account.monthlyRate || "0");
+  const dailyFixed = new Decimal(account.dailyFixedInterest || "0");
+  const installmentAmount = new Decimal(account.installmentAmount || "0");
+  const remainingInstallments = new Decimal(account.remainingInstallments || 0);
+
+  if (dailyFixed.gt(0)) {
+    return dailyFixed;
+  }
+
+  if (annual.gt(0)) {
+    return outstanding.mul(annual).div(365);
+  }
+
+  if (monthly.gt(0)) {
+    return outstanding.mul(monthly.mul(12)).div(365);
+  }
+
+  if (installmentAmount.gt(0) && remainingInstallments.gt(0)) {
+    const totalToPay = installmentAmount.mul(remainingInstallments);
+    const interestPortion = Decimal.max(totalToPay.minus(outstanding), 0);
+    const remainingDays = remainingInstallments.mul(getInstallmentDays(account.installmentFrequency));
+    return remainingDays.gt(0) ? interestPortion.div(remainingDays) : new Decimal(0);
+  }
+
+  return new Decimal(0);
+}
+
 export async function getInterestLeakMetrics(shopId: string): Promise<InterestLeakMetrics> {
+  let activeAccounts: Array<{
+    kind: string;
+    outstandingAmount: string;
+    annualRatePa: string;
+    monthlyRate: string;
+    dailyFixedInterest: string;
+    installmentAmount: string;
+    remainingInstallments: number;
+    installmentFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "BULLET";
+  }> = [];
+
+  try {
+    activeAccounts = await db
+      .select({
+        kind: debtAccounts.kind,
+        outstandingAmount: debtAccounts.outstandingAmount,
+        annualRatePa: debtAccounts.annualRatePa,
+        monthlyRate: debtAccounts.monthlyRate,
+        dailyFixedInterest: debtAccounts.dailyFixedInterest,
+        installmentAmount: debtAccounts.installmentAmount,
+        remainingInstallments: debtAccounts.remainingInstallments,
+        installmentFrequency: debtAccounts.installmentFrequency,
+      })
+      .from(debtAccounts)
+      .where(and(eq(debtAccounts.shopId, shopId), eq(debtAccounts.isActive, true)));
+  } catch {
+    activeAccounts = [];
+  }
+
+  if (activeAccounts.length > 0) {
+    let ccOutstanding = new Decimal(0);
+    let localOutstanding = new Decimal(0);
+    let ccPerDay = new Decimal(0);
+    let localPerDay = new Decimal(0);
+
+    for (const account of activeAccounts) {
+      const accountOutstanding = new Decimal(account.outstandingAmount || "0");
+      const perDay = estimateAccountDailyDrain(account);
+      if (account.kind.startsWith("BANK_")) {
+        ccOutstanding = ccOutstanding.add(accountOutstanding);
+        ccPerDay = ccPerDay.add(perDay);
+      } else {
+        localOutstanding = localOutstanding.add(accountOutstanding);
+        localPerDay = localPerDay.add(perDay);
+      }
+    }
+
+    const totalPerDay = ccPerDay.add(localPerDay);
+    const totalPerHour = totalPerDay.div(24);
+
+    return {
+      ccOutstanding,
+      localOutstanding,
+      ccPerDay,
+      localPerDay,
+      totalPerDay,
+      totalPerHour,
+    };
+  }
+
   const [config] = await db
     .select({
       ccLimit: financialConfigs.ccLimit,

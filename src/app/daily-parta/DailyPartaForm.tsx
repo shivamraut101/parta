@@ -36,12 +36,14 @@ export function DailyPartaForm({
   dailyDrains,
   persistedExpenseTotal,
   persistedExpenseCount,
+  persistedLocalDailyLoanPayment,
 }: {
   defaultDate: string;
   defaultMargin: string;
   dailyDrains: string;
   persistedExpenseTotal: string;
   persistedExpenseCount: number;
+  persistedLocalDailyLoanPayment: string;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -50,6 +52,12 @@ export function DailyPartaForm({
   const [upiSales, setUpiSales] = useState("0");
   const [margin, setMargin] = useState(defaultMargin);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [includeLocalDailyLoanPayment, setIncludeLocalDailyLoanPayment] = useState(
+    new Decimal(persistedLocalDailyLoanPayment || "0").gt(0),
+  );
+  const [localDailyLoanPayment, setLocalDailyLoanPayment] = useState(
+    persistedLocalDailyLoanPayment || "0",
+  );
 
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>("TEA_SNACKS");
@@ -77,9 +85,17 @@ export function DailyPartaForm({
     [persistedExpenseTotal, localExpenses],
   );
 
+  const localDailyLoanPaymentAmount = useMemo(
+    () =>
+      includeLocalDailyLoanPayment
+        ? new Decimal(localDailyLoanPayment || "0")
+        : new Decimal(0),
+    [includeLocalDailyLoanPayment, localDailyLoanPayment],
+  );
+
   const netParta = useMemo(
-    () => grossProfit.minus(new Decimal(dailyDrains)).minus(totalExpenses),
-    [grossProfit, dailyDrains, totalExpenses],
+    () => grossProfit.minus(new Decimal(dailyDrains)).minus(totalExpenses).minus(localDailyLoanPaymentAmount),
+    [grossProfit, dailyDrains, totalExpenses, localDailyLoanPaymentAmount],
   );
 
   const isProfit = netParta.gte(0);
@@ -90,6 +106,8 @@ export function DailyPartaForm({
     fd.set("totalSalesCash", cashSales);
     fd.set("totalSalesUpi", upiSales);
     fd.set("marginApplied", margin);
+    fd.set("includeLocalDailyLoanPayment", includeLocalDailyLoanPayment ? "true" : "false");
+    fd.set("localDailyLoanPayment", localDailyLoanPayment);
     startTransition(async () => {
       await saveDailyEntry(fd);
       setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
@@ -165,6 +183,11 @@ export function DailyPartaForm({
             <p>Kharche</p>
           </div>
         </div>
+        {includeLocalDailyLoanPayment ? (
+          <p className="mt-2 text-xs text-white/80">
+            Local daily loan payment: <span className="font-semibold text-white">{fmt(localDailyLoanPaymentAmount)}</span>
+          </p>
+        ) : null}
       </div>
 
       {/* ── GALLA ENTRY ─────────────────────────────────────────────────── */}
@@ -264,6 +287,42 @@ export function DailyPartaForm({
             <span>50%</span>
             <span>100%</span>
           </div>
+        </div>
+
+        {/* Local daily loan payment */}
+        <div className="mb-5 rounded-xl border-2 border-stone-100 bg-stone-50 p-4">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={includeLocalDailyLoanPayment}
+              onChange={(e) => setIncludeLocalDailyLoanPayment(e.target.checked)}
+              className="h-5 w-5 rounded border-stone-300 text-teal-700"
+            />
+            <span className="text-sm font-semibold text-stone-700">
+              Aaj local daily loan payment kiya
+            </span>
+          </label>
+
+          {includeLocalDailyLoanPayment ? (
+            <div className="mt-3">
+              <label
+                htmlFor="localDailyLoanPayment"
+                className="mb-1.5 block text-xs font-semibold text-stone-500"
+              >
+                Payment Amount (₹) - daily value alag ho sakti hai
+              </label>
+              <input
+                id="localDailyLoanPayment"
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={localDailyLoanPayment}
+                onChange={(e) => setLocalDailyLoanPayment(e.target.value)}
+                className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base font-bold text-stone-900 focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+          ) : null}
         </div>
 
         {/* Save button */}

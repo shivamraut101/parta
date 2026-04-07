@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  integer,
   index,
   jsonb,
   numeric,
@@ -137,6 +138,64 @@ export const debtPaymentSourceEnum = pgEnum("debt_payment_source", [
   "UPI",
 ]);
 
+export const debtAccountKindEnum = pgEnum("debt_account_kind", [
+  "BANK_CC",
+  "BANK_TERM_LOAN",
+  "BANK_OD",
+  "BANK_BILL_DISCOUNT",
+  "LOCAL_DAILY",
+  "LOCAL_MONTHLY",
+  "LOCAL_BULLET",
+  "LOCAL_FLEXI",
+]);
+
+export const debtRateInputTypeEnum = pgEnum("debt_rate_input_type", [
+  "ANNUAL_PERCENT",
+  "MONTHLY_PERCENT",
+  "DAILY_FIXED",
+  "EMI_DAILY",
+  "EMI_MONTHLY",
+]);
+
+export const debtInstallmentFrequencyEnum = pgEnum("debt_installment_frequency", [
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "BULLET",
+]);
+
+export const debtAccounts = pgTable(
+  "debt_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopId: uuid("shop_id")
+      .notNull()
+      .references(() => shops.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    lenderName: varchar("lender_name", { length: 160 }),
+    kind: debtAccountKindEnum("kind").notNull(),
+    rateInputType: debtRateInputTypeEnum("rate_input_type").notNull().default("ANNUAL_PERCENT"),
+    principalAmount: numeric("principal_amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    outstandingAmount: numeric("outstanding_amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    annualRatePa: numeric("annual_rate_pa", { precision: 10, scale: 6 }).default("0").notNull(),
+    monthlyRate: numeric("monthly_rate", { precision: 10, scale: 6 }).default("0").notNull(),
+    dailyFixedInterest: numeric("daily_fixed_interest", { precision: 18, scale: 2 }).default("0").notNull(),
+    installmentAmount: numeric("installment_amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    installmentFrequency: debtInstallmentFrequencyEnum("installment_frequency").notNull().default("MONTHLY"),
+    remainingInstallments: integer("remaining_installments").default(0).notNull(),
+    startDate: date("start_date"),
+    maturityDate: date("maturity_date"),
+    notes: text("notes"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    shopActiveIdx: index("debt_accounts_shop_active_idx").on(table.shopId, table.isActive),
+    shopKindIdx: index("debt_accounts_shop_kind_idx").on(table.shopId, table.kind),
+  }),
+);
+
 export const debtPayments = pgTable(
   "debt_payments",
   {
@@ -147,6 +206,9 @@ export const debtPayments = pgTable(
     amount: numeric("amount", { precision: 18, scale: 2 })
       .default("0")
       .notNull(),
+    debtAccountId: uuid("debt_account_id").references(() => debtAccounts.id, {
+      onDelete: "set null",
+    }),
     paymentDate: date("date").notNull(),
     targetType: debtTargetTypeEnum("target_type").notNull(),
     source: debtPaymentSourceEnum("source").notNull(),
@@ -156,6 +218,7 @@ export const debtPayments = pgTable(
   },
   (table) => ({
     shopDateIdx: index("debt_payments_shop_date_idx").on(table.shopId, table.paymentDate),
+    shopAccountIdx: index("debt_payments_shop_account_idx").on(table.shopId, table.debtAccountId),
   }),
 );
 
@@ -376,11 +439,86 @@ export const shopMembers = pgTable(
   }),
 );
 
+// ============ ADMIN SYSTEM TABLES ============
+
+export const adminUsers = pgTable(
+  "admin_users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
+    fullName: varchar("full_name", { length: 160 }),
+    isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
+    lastLogin: timestamp("last_login", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    emailIdx: index("admin_users_email_idx").on(table.email),
+    superAdminIdx: index("admin_users_is_super_admin_idx").on(table.isSuperAdmin),
+  }),
+);
+
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 120 }).notNull(),
+    shopId: uuid("shop_id").references(() => shops.id, { onDelete: "cascade" }),
+    targetType: varchar("target_type", { length: 120 }),
+    targetId: text("target_id"),
+    description: text("description"),
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    ipAddress: varchar("ip_address", { length: 50 }),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    adminIdIdx: index("admin_audit_logs_admin_id_idx").on(table.adminId),
+    shopIdIdx: index("admin_audit_logs_shop_id_idx").on(table.shopId),
+    actionIdx: index("admin_audit_logs_action_idx").on(table.action),
+    createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
+  }),
+);
+
+export const adminApiKeys = pgTable(
+  "admin_api_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    keyHash: varchar("key_hash", { length: 255 }).notNull().unique(),
+    lastUsed: timestamp("last_used", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    adminIdIdx: index("admin_api_keys_admin_id_idx").on(table.adminId),
+    activeIdx: index("admin_api_keys_is_active_idx").on(table.isActive),
+  }),
+);
+
+// ============ TYPE EXPORTS ============
+
 export type Shop = typeof shops.$inferSelect;
 export type FinancialConfig = typeof financialConfigs.$inferSelect;
 export type DailySummary = typeof dailySummaries.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
+export type DebtAccount = typeof debtAccounts.$inferSelect;
 export type DailyInterestLog = typeof dailyInterestLogs.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type SupplierTransaction = typeof supplierTransactions.$inferSelect;
@@ -389,3 +527,6 @@ export type Correction = typeof corrections.$inferSelect;
 export type ShopMember = typeof shopMembers.$inferSelect;
 export type DailyClosure = typeof dailyClosures.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
+export type AdminUser = typeof adminUsers.$inferSelect;
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+export type AdminApiKey = typeof adminApiKeys.$inferSelect;

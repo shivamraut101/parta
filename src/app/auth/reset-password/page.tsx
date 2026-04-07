@@ -26,6 +26,8 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
             <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               {params?.error === "invalid"
                 ? "Password must be at least 8 characters."
+                : params?.error === "mismatch"
+                  ? "Password and confirm password do not match."
                 : "Unable to update password. The link may have expired."}
               {" "}
               <Link href="/auth/forgot-password" className="font-semibold underline">

@@ -1,15 +1,15 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { createClient } from "@supabase/supabase-js";
+import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { dailyClosures, financialConfigs, monthlySnapshots, shopMembers, shops } from "@/db/schema";
+import { dailyClosures, financialConfigs, shopMembers, shops } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
 import { normalizeAnnualRate, normalizeMonthlyRate } from "@/lib/finance/normalizeRate";
 import { generateMonthlySnapshot } from "@/lib/reports/generateMonthlySnapshot";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { getBusinessDateString, normalizeBusinessDateInput } from "@/lib/time/businessDate";
 
@@ -271,12 +271,21 @@ export async function inviteMember(formData: FormData) {
     throw new Error("Invalid invite payload. Provide a valid email and role.");
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for team invite.");
+  }
 
-  // Look up the user by email in auth — Supabase admin API not available in edge,
-  // so we send a magic link invitation; the user_id will be resolved on first login.
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  const { data: inviteData, error } = await supabase.auth.admin.inviteUserByEmail(
+  const { data: inviteData, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     parsed.data.email,
     { redirectTo: `${siteUrl}/auth/callback?next=/` },
   );
@@ -325,7 +334,10 @@ export async function removeMember(formData: FormData) {
     .delete(shopMembers)
     .where(
       // Only allow deletion within this shop; can't delete self (owner)
-      eq(shopMembers.id, memberId.data),
+      and(
+        eq(shopMembers.id, memberId.data),
+        eq(shopMembers.shopId, tenant.shopId),
+      ),
     );
 
   await logAuditEvent({

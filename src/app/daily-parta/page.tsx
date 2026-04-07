@@ -1,7 +1,8 @@
 import Decimal from "decimal.js";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
+import { LOCAL_DAILY_LOAN_PAYMENT_DESC } from "@/app/daily-parta/constants";
 import { DailyPartaForm } from "@/app/daily-parta/DailyPartaForm";
 import { DailyPartaHistoryClient } from "@/app/daily-parta/DailyPartaHistoryClient";
 import { db } from "@/db";
@@ -29,7 +30,29 @@ export default async function DailyPartaPage() {
       count: sql<number>`count(*)::int`,
     })
     .from(expenses)
-    .where(and(eq(expenses.shopId, tenant.shopId), eq(expenses.expenseDate, todayString)));
+    .where(
+      and(
+        eq(expenses.shopId, tenant.shopId),
+        eq(expenses.expenseDate, todayString),
+        or(
+          sql`${expenses.description} is null`,
+          sql`${expenses.description} <> ${LOCAL_DAILY_LOAN_PAYMENT_DESC}`,
+        ),
+      ),
+    );
+
+  const [todayLocalDailyLoanAgg] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${expenses.amount}), '0')`,
+    })
+    .from(expenses)
+    .where(
+      and(
+        eq(expenses.shopId, tenant.shopId),
+        eq(expenses.expenseDate, todayString),
+        eq(expenses.description, LOCAL_DAILY_LOAN_PAYMENT_DESC),
+      ),
+    );
 
   const dailyDrains = new Decimal(tenant.financialConfig.dailyLocalDrain).add(
     calculateDailyInterest(
@@ -86,6 +109,7 @@ export default async function DailyPartaPage() {
         dailyDrains={dailyDrains.toString()}
         persistedExpenseTotal={todayExpenseAgg?.total ?? "0"}
         persistedExpenseCount={todayExpenseAgg?.count ?? 0}
+        persistedLocalDailyLoanPayment={todayLocalDailyLoanAgg?.total ?? "0"}
       />
 
       <section className="mt-5">

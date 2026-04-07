@@ -42,6 +42,11 @@ export async function signUpWithPassword(formData: FormData) {
 
 export async function signInWithPassword(formData: FormData) {
   const payload = parseAuthPayload(formData);
+  const nextRaw = formData.get("next");
+  const nextPath =
+    typeof nextRaw === "string" && nextRaw.startsWith("/") && !nextRaw.startsWith("//")
+      ? nextRaw
+      : "/";
   const supabase = await createSupabaseServerClient();
 
   const { error } = await supabase.auth.signInWithPassword({
@@ -58,7 +63,7 @@ export async function signInWithPassword(formData: FormData) {
     redirect(`/?authError=${message}`);
   }
 
-  redirect("/");
+  redirect(nextPath);
 }
 
 export async function signOutAction() {
@@ -96,11 +101,21 @@ export async function resendVerification(formData: FormData) {
 }
 
 export async function updatePasswordFromReset(formData: FormData) {
-  const schema = z.object({ password: z.string().min(8).max(128) });
-  const parsed = schema.safeParse({ password: formData.get("password") });
+  const schema = z.object({
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+  });
+  const parsed = schema.safeParse({
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
 
   if (!parsed.success) {
     redirect("/auth/reset-password?error=invalid");
+  }
+
+  if (parsed.data.password !== parsed.data.confirmPassword) {
+    redirect("/auth/reset-password?error=mismatch");
   }
 
   const supabase = await createSupabaseServerClient();

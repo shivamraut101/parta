@@ -15,6 +15,7 @@ import Link from "next/link";
 
 import { signInWithPassword, signUpWithPassword } from "@/app/auth/actions";
 import { createInitialShop } from "@/app/onboarding/actions";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { db } from "@/db";
 import { dailySummaries, debtPayments, suppliers } from "@/db/schema";
@@ -68,26 +69,48 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   if (!tenant) {
     if (!user) {
       return (
-        <main className="flex min-h-[100dvh] flex-col items-center justify-center px-4 py-8">
-          <div className="w-full max-w-sm">
-            {/* Brand header */}
-            <div className="mb-8 text-center">
-              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-700 text-2xl font-black text-white shadow-lg">
-                ₹
+        <main className="relative isolate min-h-[100dvh] overflow-hidden px-4 py-8">
+          <div className="pointer-events-none absolute inset-0 -z-10">
+            <div className="absolute -left-24 top-14 h-64 w-64 rounded-full bg-teal-300/45 blur-3xl" />
+            <div className="absolute -right-24 top-56 h-64 w-64 rounded-full bg-amber-300/40 blur-3xl" />
+            <div className="absolute bottom-10 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-emerald-200/45 blur-3xl" />
+          </div>
+
+          <div className="mx-auto w-full max-w-md">
+            <section className="mb-4 rounded-[2rem] border border-white/80 bg-white/80 p-6 shadow-[0_18px_70px_rgba(15,118,110,0.16)] backdrop-blur">
+              <div className="mb-4 text-center">
+                <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-700 to-cyan-700 text-2xl font-black text-white shadow-lg shadow-teal-700/30">
+                  ₹
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-teal-700">
+                  Retail Profit OS
+                </p>
+                <h1 className="mt-1 text-3xl font-black text-stone-900">Digital Munim</h1>
+                <p className="mt-1 text-sm text-stone-600">Aapki dukaan ka digital hisaab</p>
               </div>
-              <h1 className="text-2xl font-black text-stone-900">Digital Munim</h1>
-              <p className="mt-1 text-sm text-stone-500">Aapki dukaan ka digital hisaab</p>
-            </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl bg-stone-900 px-2 py-2 text-[11px] font-semibold text-white">
+                  Galla
+                </div>
+                <div className="rounded-xl bg-teal-50 px-2 py-2 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200">
+                  Karj
+                </div>
+                <div className="rounded-xl bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                  Saakh
+                </div>
+              </div>
+            </section>
 
             {/* Notices */}
             {authError ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4">
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
                 <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-600" />
                 <p className="text-sm font-medium text-red-800">{authError}</p>
               </div>
             ) : null}
             {authNotice === "check_email" ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 p-4">
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
                 <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-600" />
                 <p className="text-sm font-medium text-green-800">
                   Account bana diya! Inbox check karo aur email confirm karo.
@@ -95,7 +118,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </div>
             ) : null}
             {authNotice === "reset_email_sent" ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 p-4">
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
                 <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-600" />
                 <p className="text-sm font-medium text-green-800">
                   Password reset link bhej diya. Inbox check karo.
@@ -103,7 +126,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </div>
             ) : null}
             {authNotice === "password_updated" ? (
-              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 p-4">
+              <div className="mb-4 flex items-start gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
                 <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-600" />
                 <p className="text-sm font-medium text-green-800">
                   Password badal gaya! Neeche sign in karo.
@@ -114,9 +137,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             {/* Sign In */}
             <form
               action={signInWithPassword}
-              className="space-y-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100"
+              className="space-y-3 rounded-[2rem] border border-white/85 bg-white/90 p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)] backdrop-blur"
             >
-              <p className="text-base font-bold text-stone-900">Sign In करें</p>
+              <div className="mb-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Welcome Back
+                </p>
+                <p className="text-xl font-black text-stone-900">Sign In करें</p>
+              </div>
               <input
                 type="email"
                 name="email"
@@ -125,25 +153,23 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 placeholder="Email address"
                 autoComplete="email"
                 inputMode="email"
-                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
+                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base text-stone-900 focus:border-teal-500 focus:outline-none"
               />
-              <input
-                type="password"
+              <PasswordField
+                id="signInPassword"
                 name="password"
-                required
-                minLength={8}
                 placeholder="Password"
                 autoComplete="current-password"
-                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
+                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 pr-12 text-base text-stone-900 focus:border-teal-500 focus:outline-none"
               />
               <button
                 type="submit"
-                className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800"
+                className="h-14 w-full rounded-xl bg-gradient-to-r from-teal-700 to-cyan-700 text-base font-bold text-white shadow-md shadow-teal-800/25 active:from-teal-800 active:to-cyan-800"
               >
                 Sign In करें
               </button>
               <div className="text-center">
-                <Link href="/auth/forgot-password" className="text-sm text-stone-400 underline">
+                <Link href="/auth/forgot-password" className="text-sm font-medium text-stone-500 underline decoration-stone-300 underline-offset-4">
                   Password bhool gaye?
                 </Link>
               </div>
@@ -152,9 +178,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             {/* Sign Up */}
             <form
               action={signUpWithPassword}
-              className="mt-4 space-y-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100"
+              className="mt-4 space-y-3 rounded-[2rem] bg-stone-900 p-6 text-white shadow-[0_16px_40px_rgba(17,24,39,0.28)]"
             >
-              <p className="text-base font-bold text-stone-900">Naya Account बनाएं</p>
+              <div className="mb-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                  New Shop Setup
+                </p>
+                <p className="text-xl font-black text-white">Naya Account बनाएं</p>
+              </div>
               <input
                 type="email"
                 name="email"
@@ -162,24 +193,26 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 placeholder="Email address"
                 autoComplete="email"
                 inputMode="email"
-                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
+                className="h-14 w-full rounded-xl border border-white/15 bg-white/10 px-4 text-base text-white placeholder:text-white/60 focus:border-teal-300 focus:outline-none"
               />
-              <input
-                type="password"
+              <PasswordField
+                id="signUpPassword"
                 name="password"
-                required
-                minLength={8}
                 placeholder="Password (minimum 8 characters)"
                 autoComplete="new-password"
-                className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
+                className="h-14 w-full rounded-xl border border-white/15 bg-white/10 px-4 pr-12 text-base text-white placeholder:text-white/60 focus:border-teal-300 focus:outline-none"
               />
               <button
                 type="submit"
-                className="h-14 w-full rounded-xl bg-stone-900 text-base font-bold text-white active:bg-stone-800"
+                className="h-14 w-full rounded-xl bg-white text-base font-bold text-stone-900 active:bg-stone-200"
               >
                 Account बनाएं
               </button>
             </form>
+
+            <p className="mt-4 text-center text-xs font-medium text-stone-500">
+              Simple daily routine. Fast entries. Better profit clarity.
+            </p>
           </div>
         </main>
       );
