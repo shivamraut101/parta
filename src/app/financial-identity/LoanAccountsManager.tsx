@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Decimal from "decimal.js";
 import { useTransition } from "react";
@@ -17,7 +17,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select-modern";
+} from "@/components/ui/select";
 
 type DebtAccountKind =
   | "BANK_CC"
@@ -88,7 +88,7 @@ function defaultRateInputTypeForKind(kind: DebtAccountKind): DebtRateInputType {
 }
 
 function fmt(value: Decimal) {
-  return `₹${Number(value.toFixed(2)).toLocaleString("en-IN", {
+  return `Rs ${Number(value.toFixed(2)).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -190,8 +190,8 @@ export function LoanAccountsManager({
       setError("Loan name required hai.");
       return;
     }
-    if (mode === "create" && new Decimal(outstandingAmount || "0").lte(0)) {
-      setError("Outstanding amount 0 se bada hona chahiye.");
+    if (new Decimal(outstandingAmount || "0").lt(0)) {
+      setError("Current outstanding amount 0 ya usse bada hona chahiye.");
       return;
     }
 
@@ -238,7 +238,7 @@ export function LoanAccountsManager({
       <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4">
         <div>
           <p className="text-base font-bold text-stone-900">Loan Accounts</p>
-          <p className="text-xs text-stone-500">CC, Term Loans, Local Loans — sabhi yahan manage karo</p>
+          <p className="text-xs text-stone-500">CC, Term Loans, Local Loans - sabhi yahan manage karo</p>
         </div>
         <Button
           type="button"
@@ -267,7 +267,7 @@ export function LoanAccountsManager({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-bold text-stone-900">{account.name}</p>
-                    <p className="text-xs text-stone-500">{kindLabel(account.kind)}{account.lenderName ? ` · ${account.lenderName}` : ""}</p>
+                    <p className="text-xs text-stone-500">{kindLabel(account.kind)}{account.lenderName ? ` - ${account.lenderName}` : ""}</p>
                   </div>
                   <Button
                     type="button"
@@ -283,17 +283,17 @@ export function LoanAccountsManager({
                   {isRevolvingKind(account.kind) ? (
                     <>
                       <p>CC Limit: <span className="font-bold text-stone-900">{fmt(new Decimal(account.creditLimit || "0"))}</span></p>
-                      <p>Outstanding: <span className="font-bold text-red-700">{fmt(new Decimal(account.outstandingAmount || "0"))}</span></p>
-                      <p>Available: <span className="font-bold text-green-700">{fmt(Decimal.max(new Decimal(account.creditLimit || "0").minus(new Decimal(account.outstandingAmount || "0")), 0))}</span></p>
+                      <p>Used Right Now: <span className="font-bold text-red-700">{fmt(new Decimal(account.outstandingAmount || "0"))}</span></p>
+                      <p>Available Limit: <span className="font-bold text-green-700">{fmt(Decimal.max(new Decimal(account.creditLimit || "0").minus(new Decimal(account.outstandingAmount || "0")), 0))}</span></p>
                     </>
                   ) : (
                     <>
-                      <p>Principal: <span className="font-bold text-stone-900">{fmt(new Decimal(account.principalAmount || "0"))}</span></p>
-                      <p>Outstanding: <span className="font-bold text-red-700">{fmt(new Decimal(account.outstandingAmount || "0"))}</span></p>
+                      <p>Opening Loan: <span className="font-bold text-stone-900">{fmt(new Decimal(account.principalAmount || "0"))}</span></p>
+                      <p>Current Outstanding: <span className="font-bold text-red-700">{fmt(new Decimal(account.outstandingAmount || "0"))}</span></p>
                     </>
                   )}
-                  {account.startDate ? <p>Start: <span className="font-semibold">{account.startDate}</span></p> : null}
-                  {account.maturityDate ? <p>Maturity: <span className="font-semibold">{account.maturityDate}</span></p> : null}
+                  {account.startDate ? <p>Opened On: <span className="font-semibold">{account.startDate}</span></p> : null}
+                  {account.maturityDate ? <p>Due / Maturity: <span className="font-semibold">{account.maturityDate}</span></p> : null}
                 </div>
               </div>
             ))}
@@ -385,7 +385,7 @@ export function LoanAccountsManager({
                   <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm">
                     <SelectValue placeholder="Select loan type" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectGroup>
                       <SelectLabel>Bank Loans</SelectLabel>
                       {bankKinds.map((k) => (
@@ -412,10 +412,10 @@ export function LoanAccountsManager({
                         onValueChange={(value) => setLinkedCurrentAccountName(value === "__none__" ? "" : value)}
                       >
                         <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm">
-                          <SelectValue placeholder="— No linking —" />
+                          <SelectValue placeholder="-- No linking --" />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">— No linking —</SelectItem>
+                        <SelectContent position="popper">
+                          <SelectItem value="__none__">-- No linking --</SelectItem>
                           {currentAccounts.map((ca) => (
                             <SelectItem key={ca.accountName} value={ca.accountName}>
                               {ca.accountName}
@@ -424,7 +424,7 @@ export function LoanAccountsManager({
                         </SelectContent>
                       </Select>
                       <p className="mt-1 text-[11px] text-stone-500">
-                        CC ↔ Current A/c transfer ke liye link karo (optional).
+                        CC aur Current A/c transfer tracking ke liye link karo (optional).
                       </p>
                     </>
                   ) : (
@@ -456,7 +456,7 @@ export function LoanAccountsManager({
                   <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm">
                     <SelectValue placeholder="Select interest type" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectItem value="ANNUAL_PERCENT">Annual %</SelectItem>
                     <SelectItem value="MONTHLY_PERCENT">Monthly %</SelectItem>
                     <SelectItem value="DAILY_FIXED">Daily fixed interest</SelectItem>
@@ -464,54 +464,6 @@ export function LoanAccountsManager({
                     <SelectItem value="EMI_MONTHLY">Monthly installment</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div>
-                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">
-                  {kind === "BANK_CC" || kind === "BANK_OD"
-                    ? "Starting Used Amount (start date pe kitna use tha)"
-                    : "Starting Loan Amount (shuru ka total loan)"}
-                </Label>
-                <Input
-                  value={principalAmount}
-                  onChange={(e) => setPrincipalAmount(e.target.value)}
-                  placeholder="e.g. 100000"
-                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
-                />
-              </div>
-
-              <div>
-                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Outstanding Amount *</Label>
-                <Input
-                  value={outstandingAmount}
-                  onChange={(e) => setOutstandingAmount(e.target.value)}
-                  placeholder="Abhi kitna baki hai"
-                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
-                />
-                <p className="mt-1 text-[11px] text-stone-500">
-                  Note: takouts aur repayments Debt Engine se record karo — outstanding auto-update hoga.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Start Date</Label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Maturity Date (optional)</Label>
-                  <Input
-                    type="date"
-                    value={maturityDate}
-                    onChange={(e) => setMaturityDate(e.target.value)}
-                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
-                  />
-                </div>
               </div>
 
               {rateInputType === "ANNUAL_PERCENT" ? (
@@ -523,6 +475,9 @@ export function LoanAccountsManager({
                     placeholder="e.g. 14"
                     className="h-12 rounded-xl border-slate-200 px-4 text-sm"
                   />
+                  <p className="mt-1 text-[11px] text-stone-500">
+                    Saal bhar ka byaaj percent likho. Example: 14 matlab 14% per year.
+                  </p>
                 </div>
               ) : null}
 
@@ -540,7 +495,7 @@ export function LoanAccountsManager({
 
               {rateInputType === "DAILY_FIXED" ? (
                 <div>
-                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Daily Interest Amount (₹ per day)</Label>
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Daily Interest Amount (Rs per day)</Label>
                   <Input
                     value={dailyFixedInterest}
                     onChange={(e) => setDailyFixedInterest(e.target.value)}
@@ -570,7 +525,7 @@ export function LoanAccountsManager({
                       <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white px-4 text-sm">
                         <SelectValue placeholder="Select frequency" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent position="popper">
                         <SelectItem value="DAILY">Daily</SelectItem>
                         <SelectItem value="WEEKLY">Weekly</SelectItem>
                         <SelectItem value="MONTHLY">Monthly</SelectItem>
@@ -589,6 +544,60 @@ export function LoanAccountsManager({
                   </div>
                 </>
               ) : null}
+
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">
+                  {kind === "BANK_CC" || kind === "BANK_OD"
+                    ? "Opening Used Amount (on start date)"
+                    : "Opening Loan Amount"}
+                </Label>
+                <Input
+                  value={principalAmount}
+                  onChange={(e) => setPrincipalAmount(e.target.value)}
+                  placeholder={kind === "BANK_CC" || kind === "BANK_OD" ? "e.g. 0 (new CC) or 120000" : "e.g. 100000"}
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+                <p className="mt-1 text-[11px] text-stone-500">
+                  {kind === "BANK_CC" || kind === "BANK_OD"
+                    ? "Agar CC naya hai aur start date pe use nahi hua, to 0 likho. Agar purana CC import kar rahe ho, to start date tak jitna already used hai woh amount likho."
+                    : "Loan shuru hone ke time total kitna amount liya tha."
+                  }
+                </p>
+              </div>
+
+              <div>
+                <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Current Outstanding Amount *</Label>
+                <Input
+                  value={outstandingAmount}
+                  onChange={(e) => setOutstandingAmount(e.target.value)}
+                  placeholder="Abhi kitna baki / dena reh gaya hai"
+                  className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                />
+                <p className="mt-1 text-[11px] text-stone-500">
+                  Aaj ki date me kitna baki hai wahi likho. Naya CC khola hai aur abhi kuch use nahi kiya, to yahan 0 likh sakte ho. Takouts aur repayments Debt Engine se record karoge to yeh amount auto-update hoga.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Start Date</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Maturity Date (optional)</Label>
+                  <Input
+                    type="date"
+                    value={maturityDate}
+                    onChange={(e) => setMaturityDate(e.target.value)}
+                    className="h-12 rounded-xl border-slate-200 px-4 text-sm"
+                  />
+                </div>
+              </div>
 
               <div>
                 <Label className="mb-1.5 block text-xs font-semibold text-stone-500">Notes (optional)</Label>
@@ -635,3 +644,4 @@ export function LoanAccountsManager({
     </section>
   );
 }
+

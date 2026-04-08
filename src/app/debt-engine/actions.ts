@@ -3,17 +3,19 @@
 import Decimal from "decimal.js";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/db";
 import {
+  currentAccountMovements,
   debtAccountMovements,
   debtAccounts,
   debtPayments,
   shops,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
-import { recordCurrentAccountMovement } from "@/lib/finance/currentAccountLedger";
+import { recomputeCurrentAccountBalances, recordCurrentAccountMovement } from "@/lib/finance/currentAccountLedger";
 import { assertBusinessDayUnlocked } from "@/lib/lock/assertBusinessDayUnlocked";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { normalizeBusinessDateInput } from "@/lib/time/businessDate";
@@ -76,6 +78,29 @@ const currentAccountAdjustmentSchema = z.object({
   direction: z.enum(["IN", "OUT"]),
   notes: z.string().max(500).optional(),
   accountName: z.string().max(160).optional(),
+});
+
+const updateDebtMovementMetaSchema = z.object({
+  movementId: z.string().uuid(),
+  movementDate: z.string().min(1),
+  notes: z.string().max(500).optional(),
+  returnTo: z.string().optional(),
+});
+
+const updateCurrentAccountMovementSchema = z.object({
+  movementId: z.string().uuid(),
+  movementDate: z.string().min(1).optional(),
+  amount: z.preprocess(
+    (value) => {
+      if (value === "" || value === null || value === undefined) return undefined;
+      if (typeof value === "string") return Number(value);
+      return value;
+    },
+    z.number().finite().optional(),
+  ),
+  direction: z.enum(["IN", "OUT"]).optional(),
+  notes: z.string().max(500).optional(),
+  returnTo: z.string().optional(),
 });
 
 type DebtRateInputType = z.infer<typeof debtRateInputTypeSchema>;
@@ -177,7 +202,7 @@ function validateDebtAccountPayload(
 }
 
 const createDebtAccountSchema = debtAccountBaseSchema.superRefine((data, ctx) => {
-  validateDebtAccountPayload(data, ctx, true);
+  validateDebtAccountPayload(data, ctx, false);
 });
 
 const updateDebtAccountSchema = debtAccountBaseSchema.extend({
@@ -433,6 +458,9 @@ export async function createDebtAccount(formData: FormData) {
     throw new Error("Unauthorized tenant context.");
   }
 
+  const rawStartDate = (formData.get("startDate")?.toString() || "").trim();
+  const rawMaturityDate = (formData.get("maturityDate")?.toString() || "").trim();
+
   const parsed = createDebtAccountSchema.safeParse({
     name: formData.get("name"),
     lenderName: formData.get("lenderName") || undefined,
@@ -448,8 +476,8 @@ export async function createDebtAccount(formData: FormData) {
     installmentAmount: formData.get("installmentAmount") || "0",
     installmentFrequency: formData.get("installmentFrequency") || "MONTHLY",
     remainingInstallments: formData.get("remainingInstallments") || "0",
-    startDate: normalizeBusinessDateInput(formData.get("startDate")) || undefined,
-    maturityDate: normalizeBusinessDateInput(formData.get("maturityDate")) || undefined,
+    startDate: rawStartDate ? normalizeBusinessDateInput(rawStartDate) : undefined,
+    maturityDate: rawMaturityDate ? normalizeBusinessDateInput(rawMaturityDate) : undefined,
     notes: (formData.get("notes")?.toString() || "").trim() || undefined,
   });
 
@@ -465,6 +493,33 @@ export async function createDebtAccount(formData: FormData) {
   const creditLimit = (payload.kind === "BANK_CC" || payload.kind === "BANK_OD")
     ? new Decimal(payload.creditLimit || payload.principalAmount || payload.outstandingAmount || 0)
     : principalAmount;
+
+  const possibleDuplicates = await db
+    .select({
+      id: debtAccounts.id,
+      lenderName: debtAccounts.lenderName,
+      startDate: debtAccounts.startDate,
+      creditLimit: debtAccounts.creditLimit,
+      kind: debtAccounts.kind,
+      name: debtAccounts.name,
+    })
+    .from(debtAccounts)
+    .where(and(
+      eq(debtAccounts.shopId, context.shopId),
+      eq(debtAccounts.kind, payload.kind),
+      eq(debtAccounts.name, payload.name),
+    ));
+
+  const hasExactDuplicate = possibleDuplicates.some((row) => {
+    const sameLender = (row.lenderName ?? "").trim().toLowerCase() === (payload.lenderName ?? "").trim().toLowerCase();
+    const sameStartDate = (row.startDate ?? "") === (payload.startDate ?? null);
+    const sameCreditLimit = new Decimal(row.creditLimit || "0").eq(creditLimit);
+    return sameLender && sameStartDate && sameCreditLimit;
+  });
+
+  if (hasExactDuplicate) {
+    throw new Error("Same loan account pehle se exist karta hai. Naya add karne ki jagah Edit use karo.");
+  }
 
   assertOutstandingWithinLimit(payload.kind, outstandingAmount, creditLimit);
 
@@ -509,7 +564,7 @@ export async function createDebtAccount(formData: FormData) {
   await logAuditEvent({
     shopId: context.shopId,
     actorUserId: context.userId,
-    eventDate: normalizeBusinessDateInput(formData.get("startDate")) || normalizeBusinessDateInput(formData.get("maturityDate")) || new Date().toISOString().slice(0, 10),
+    eventDate: payload.startDate || new Date().toISOString().slice(0, 10),
     eventType: "DEBT_ACCOUNT_CREATED",
     entityType: "DEBT_ACCOUNT",
     entityId: insertedAccount?.id,
@@ -841,4 +896,138 @@ export async function recordCurrentAccountAdjustment(formData: FormData) {
   });
 
   revalidatePath("/debt-engine");
+}
+
+function getSafeReturnPath(input: string | undefined, fallback: string) {
+  if (!input) return fallback;
+  if (input.startsWith("/debt-engine")) return input;
+  return fallback;
+}
+
+export async function updateDebtMovementMeta(formData: FormData) {
+  const context = await getTenantContext();
+  if (!context) {
+    throw new Error("Unauthorized tenant context.");
+  }
+
+  const parsed = updateDebtMovementMetaSchema.safeParse({
+    movementId: formData.get("movementId"),
+    movementDate: normalizeBusinessDateInput(formData.get("movementDate")),
+    notes: (formData.get("notes")?.toString() || "").trim() || undefined,
+    returnTo: (formData.get("returnTo")?.toString() || "").trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid debt movement update payload.");
+  }
+
+  await assertTenantShopOwnership(context.shopId, context.userId);
+  await assertBusinessDayUnlocked(context.shopId, parsed.data.movementDate);
+
+  const [existing] = await db
+    .select({ id: debtAccountMovements.id })
+    .from(debtAccountMovements)
+    .where(and(eq(debtAccountMovements.id, parsed.data.movementId), eq(debtAccountMovements.shopId, context.shopId)))
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("Debt movement not found.");
+  }
+
+  await db
+    .update(debtAccountMovements)
+    .set({
+      movementDate: parsed.data.movementDate,
+      notes: parsed.data.notes || null,
+    })
+    .where(eq(debtAccountMovements.id, parsed.data.movementId));
+
+  revalidatePath("/debt-engine");
+
+  redirect(getSafeReturnPath(parsed.data.returnTo, "/debt-engine"));
+}
+
+export async function updateCurrentAccountMovementEntry(formData: FormData) {
+  const context = await getTenantContext();
+  if (!context) {
+    throw new Error("Unauthorized tenant context.");
+  }
+
+  const parsed = updateCurrentAccountMovementSchema.safeParse({
+    movementId: formData.get("movementId"),
+    movementDate: formData.get("movementDate")
+      ? normalizeBusinessDateInput(formData.get("movementDate"))
+      : undefined,
+    amount: formData.get("amount") || undefined,
+    direction: formData.get("direction") || undefined,
+    notes: (formData.get("notes")?.toString() || "").trim() || undefined,
+    returnTo: (formData.get("returnTo")?.toString() || "").trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid current account movement update payload.");
+  }
+
+  await assertTenantShopOwnership(context.shopId, context.userId);
+
+  const [existing] = await db
+    .select({
+      id: currentAccountMovements.id,
+      sourceType: currentAccountMovements.sourceType,
+      movementDate: currentAccountMovements.movementDate,
+      movementType: currentAccountMovements.movementType,
+      amount: currentAccountMovements.amount,
+      direction: currentAccountMovements.direction,
+    })
+    .from(currentAccountMovements)
+    .where(and(eq(currentAccountMovements.id, parsed.data.movementId), eq(currentAccountMovements.shopId, context.shopId)))
+    .limit(1);
+
+  if (!existing) {
+    throw new Error("Current account movement not found.");
+  }
+
+  const isManual = existing.sourceType === "MANUAL_ADJUSTMENT";
+
+  if (isManual) {
+    const nextDate = parsed.data.movementDate || existing.movementDate;
+    const nextDirection = parsed.data.direction
+      ? (parsed.data.direction === "IN" ? 1 : -1)
+      : existing.direction;
+    const requestedAmount = parsed.data.amount !== undefined
+      ? new Decimal(parsed.data.amount)
+      : null;
+    const nextAmount = requestedAmount && requestedAmount.gt(0)
+      ? requestedAmount
+      : new Decimal(existing.amount || "0");
+
+    await assertBusinessDayUnlocked(context.shopId, nextDate);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(currentAccountMovements)
+        .set({
+          movementDate: nextDate,
+          direction: nextDirection,
+          movementType: nextDirection === 1 ? "EXTERNAL_DEPOSIT_INFLOW" : "ADJUSTMENT",
+          amount: nextAmount.toFixed(2),
+          notes: parsed.data.notes || null,
+        })
+        .where(eq(currentAccountMovements.id, existing.id));
+
+      await recomputeCurrentAccountBalances(tx, context.shopId);
+    });
+  } else {
+    await db
+      .update(currentAccountMovements)
+      .set({
+        notes: parsed.data.notes || null,
+      })
+      .where(eq(currentAccountMovements.id, existing.id));
+  }
+
+  revalidatePath("/debt-engine");
+  revalidatePath("/debt-engine/current-account-statement");
+
+  redirect(getSafeReturnPath(parsed.data.returnTo, "/debt-engine/current-account-statement"));
 }

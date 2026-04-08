@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import { and, asc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -102,6 +102,7 @@ export default async function FinancialIdentityPage({ searchParams }: PageProps)
     maturityDate: string | null;
     notes: string | null;
     rateInputType: "ANNUAL_PERCENT" | "MONTHLY_PERCENT" | "DAILY_FIXED" | "EMI_DAILY" | "EMI_MONTHLY";
+    updatedAt: Date;
   }> = [];
 
   try {
@@ -127,13 +128,35 @@ export default async function FinancialIdentityPage({ searchParams }: PageProps)
         maturityDate: debtAccounts.maturityDate,
         notes: debtAccounts.notes,
         rateInputType: debtAccounts.rateInputType,
+        updatedAt: debtAccounts.updatedAt,
       })
       .from(debtAccounts)
-      .where(and(eq(debtAccounts.shopId, tenant.shopId), eq(debtAccounts.isActive, true)))
-      .orderBy(asc(debtAccounts.name));
+      .where(eq(debtAccounts.shopId, tenant.shopId))
+      .orderBy(desc(debtAccounts.updatedAt));
   } catch {
     loanAccounts = [];
   }
+
+  // Keep only the newest record per same business identity to avoid accidental clone cards.
+  const uniqueLoanAccounts = Array.from(
+    loanAccounts
+      .reduce((map, account) => {
+        const key = [
+          account.kind,
+          account.name.trim().toLowerCase(),
+          (account.lenderName ?? "").trim().toLowerCase(),
+          account.startDate ?? "",
+          new Decimal(account.creditLimit || "0").toFixed(2),
+        ].join("|");
+
+        if (!map.has(key)) {
+          map.set(key, account);
+        }
+
+        return map;
+      }, new Map<string, (typeof loanAccounts)[number]>())
+      .values(),
+  );
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-24 pt-4">
@@ -223,7 +246,7 @@ export default async function FinancialIdentityPage({ searchParams }: PageProps)
         </form>
       </section>
 
-      <LoanAccountsManager accounts={loanAccounts} today={getBusinessDateString()} currentAccounts={allCurrentAccounts} />
+      <LoanAccountsManager accounts={uniqueLoanAccounts} today={getBusinessDateString()} currentAccounts={allCurrentAccounts} />
     </main>
   );
 }

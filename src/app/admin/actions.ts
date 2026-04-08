@@ -11,9 +11,12 @@ import {
   adminAuditLogs,
   auditEvents,
   corrections,
+  currentAccountAccounts,
+  currentAccountMovements,
   dailyClosures,
   dailyInterestLogs,
   dailySummaries,
+  debtAccountMovements,
   debtAccounts,
   debtPayments,
   expenses,
@@ -381,17 +384,22 @@ export async function resetAccountData(formData: FormData) {
       await tx.delete(adminAuditLogs).where(eq(adminAuditLogs.shopId, tenant.shopId));
       await tx.delete(auditEvents).where(eq(auditEvents.shopId, tenant.shopId));
 
-      // Business data
+      // Business data (full wipe)
       await tx.delete(corrections).where(eq(corrections.shopId, tenant.shopId));
       await tx.delete(monthlySnapshots).where(eq(monthlySnapshots.shopId, tenant.shopId));
       await tx.delete(dailyClosures).where(eq(dailyClosures.shopId, tenant.shopId));
       await tx.delete(dailyInterestLogs).where(eq(dailyInterestLogs.shopId, tenant.shopId));
       await tx.delete(expenses).where(eq(expenses.shopId, tenant.shopId));
       await tx.delete(dailySummaries).where(eq(dailySummaries.shopId, tenant.shopId));
-      await tx.delete(debtPayments).where(eq(debtPayments.shopId, tenant.shopId));
-      await tx.delete(debtAccounts).where(eq(debtAccounts.shopId, tenant.shopId));
       await tx.delete(supplierTransactions).where(eq(supplierTransactions.shopId, tenant.shopId));
       await tx.delete(suppliers).where(eq(suppliers.shopId, tenant.shopId));
+
+      // Debt + CA ledgers
+      await tx.delete(currentAccountMovements).where(eq(currentAccountMovements.shopId, tenant.shopId));
+      await tx.delete(debtPayments).where(eq(debtPayments.shopId, tenant.shopId));
+      await tx.delete(debtAccountMovements).where(eq(debtAccountMovements.shopId, tenant.shopId));
+      await tx.delete(debtAccounts).where(eq(debtAccounts.shopId, tenant.shopId));
+      await tx.delete(currentAccountAccounts).where(eq(currentAccountAccounts.shopId, tenant.shopId));
 
       // Team membership reset: only owner remains
       await tx.delete(shopMembers).where(eq(shopMembers.shopId, tenant.shopId));
@@ -445,6 +453,8 @@ export async function resetAccountData(formData: FormData) {
     revalidatePath("/admin");
     revalidatePath("/daily-parta");
     revalidatePath("/debt-engine");
+    revalidatePath("/debt-engine/ledger");
+    revalidatePath("/debt-engine/current-account-statement");
     revalidatePath("/supplier-wall");
     revalidatePath("/financial-identity");
     revalidatePath("/reports");

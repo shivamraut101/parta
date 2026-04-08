@@ -9,7 +9,7 @@ import {
   recordSupplierPurchase,
   recordSupplierReturn,
 } from "@/app/supplier-wall/actions";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select-modern";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SupplierCardData = {
   id: string;

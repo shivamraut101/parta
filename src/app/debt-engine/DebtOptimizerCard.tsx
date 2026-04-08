@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Decimal from "decimal.js";
+import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
@@ -19,7 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select-modern";
+} from "@/components/ui/select";
 
 type DebtTargetType = "BANK_CC" | "LOCAL_LOAN";
 type DebtPaymentSource = "CASH" | "UPI" | "NEFT" | "IMPS" | "CC_TO_CA_TRANSFER" | "CA_TO_CC_TRANSFER";
@@ -415,12 +416,22 @@ export function DebtOptimizerCard({
               {recentCurrentAccountMovements.length > 0 ? (
                 <div className="space-y-1 rounded-xl border border-sky-100 bg-white p-2">
                   {recentCurrentAccountMovements.slice(0, 6).map((movement) => (
-                    <div key={movement.id} className="flex items-center justify-between text-[11px] text-slate-600">
-                      <p>
-                        <span className="font-semibold text-slate-800">{caMovementLabel(movement.movementType)}</span> · {movement.movementDate}
+                    <div key={movement.id} className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
+                      <p className="min-w-0 leading-tight break-words">
+                        <span className="font-semibold text-slate-800">{caMovementLabel(movement.movementType)}</span>
+                        <span className="text-slate-500"> · {movement.movementDate}</span>
                       </p>
-                      <p className={`font-bold ${movement.direction === 1 ? "text-green-700" : "text-red-700"}`}>
-                        {movement.direction === 1 ? "+" : "-"}{fmt(new Decimal(movement.amount || "0")).replace("₹", "")}
+                      <p className={`shrink-0 pl-2 text-right font-bold ${movement.direction === 1 ? "text-green-700" : "text-red-700"}`}>
+                        {movement.direction === 1 ? "+" : "-"}
+                        {fmt(new Decimal(movement.amount || "0")).replace("Rs ", "")}
+                        <Link
+                          href={`/debt-engine/transactions/edit?kind=ca&id=${movement.id}&returnTo=${encodeURIComponent("/debt-engine")}`}
+                          className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-md border border-sky-200 align-middle text-sky-700 hover:bg-sky-50"
+                          aria-label="Edit transaction"
+                          title="Edit transaction"
+                        >
+                          <Pencil size={12} />
+                        </Link>
                       </p>
                     </div>
                   ))}
@@ -430,6 +441,15 @@ export function DebtOptimizerCard({
                   Abhi tak koi CA movement record nahi hua.
                 </p>
               )}
+
+              <div>
+                <Link
+                  href="/debt-engine/ledger"
+                  className="inline-flex h-9 items-center rounded-xl border border-sky-200 bg-white px-3 text-xs font-bold text-sky-800 hover:bg-sky-100"
+                >
+                  Open Full Ledger
+                </Link>
+              </div>
             </>
           ) : (
             <p className="rounded-lg bg-white px-3 py-2 text-xs text-slate-500 ring-1 ring-sky-100">
@@ -602,12 +622,23 @@ export function DebtOptimizerCard({
                     {recentMovements.filter((m) => m.debtAccountId === account.id).slice(0, 3).length > 0 ? (
                       <div className="mt-2 space-y-1 rounded-lg border border-stone-100 bg-white p-2">
                         {recentMovements.filter((m) => m.debtAccountId === account.id).slice(0, 3).map((movement) => (
-                          <div key={movement.id} className="flex items-center justify-between text-[11px] text-stone-500">
-                            <p>
+                          <div key={movement.id} className="flex items-start justify-between gap-2 text-[11px] text-stone-500">
+                            <p className="min-w-0 leading-tight break-words">
                               <span className="font-semibold text-stone-700">{movementLabel(movement.movementType)}</span>
-                              {movement.source ? ` (${paymentSourceLabel(movement.source)})` : ""} · {movement.movementDate}
+                              {movement.source ? ` (${paymentSourceLabel(movement.source)})` : ""}
+                              <span className="text-stone-500"> · {movement.movementDate}</span>
                             </p>
-                            <p className="font-bold text-stone-800">{fmt(new Decimal(movement.amount || "0"))}</p>
+                            <p className="shrink-0 pl-2 text-right font-bold text-stone-800">
+                              {fmt(new Decimal(movement.amount || "0"))}
+                              <Link
+                                href={`/debt-engine/transactions/edit?kind=debt&id=${movement.id}&returnTo=${encodeURIComponent("/debt-engine")}`}
+                                className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-md border border-sky-200 align-middle text-sky-700 hover:bg-sky-50"
+                                aria-label="Edit transaction"
+                                title="Edit transaction"
+                              >
+                                <Pencil size={12} />
+                              </Link>
+                            </p>
                           </div>
                         ))}
                       </div>
