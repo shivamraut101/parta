@@ -13,12 +13,20 @@ import {
   shops,
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
+import { recordCurrentAccountMovement } from "@/lib/finance/currentAccountLedger";
 import { assertBusinessDayUnlocked } from "@/lib/lock/assertBusinessDayUnlocked";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { normalizeBusinessDateInput } from "@/lib/time/businessDate";
 
 const debtTargetTypeSchema = z.enum(["BANK_CC", "LOCAL_LOAN"]);
-const debtPaymentSourceSchema = z.enum(["CASH", "UPI"]);
+const debtPaymentSourceSchema = z.enum([
+  "CASH",
+  "UPI",
+  "NEFT",
+  "IMPS",
+  "CC_TO_CA_TRANSFER",
+  "CA_TO_CC_TRANSFER",
+]);
 
 const debtPaymentSchema = z.object({
   amount: z.coerce.number().positive(),
@@ -62,6 +70,14 @@ const debtDrawdownSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+const currentAccountAdjustmentSchema = z.object({
+  amount: z.coerce.number().positive(),
+  date: z.string().min(1),
+  direction: z.enum(["IN", "OUT"]),
+  notes: z.string().max(500).optional(),
+  accountName: z.string().max(160).optional(),
+});
+
 type DebtRateInputType = z.infer<typeof debtRateInputTypeSchema>;
 type DebtInstallmentFrequency = z.infer<typeof debtInstallmentFrequencySchema>;
 type DebtAccountKind = z.infer<typeof debtAccountKindSchema>;
@@ -71,6 +87,7 @@ const revolvingDebtKinds = new Set<DebtAccountKind>(["BANK_CC", "BANK_OD", "LOCA
 const debtAccountBaseSchema = z.object({
   name: z.string().min(2).max(160),
   lenderName: z.string().max(160).optional(),
+  linkedCurrentAccountName: z.string().max(160).optional(),
   kind: debtAccountKindSchema,
   rateInputType: debtRateInputTypeSchema,
   creditLimit: z.coerce.number().nonnegative().default(0),
@@ -249,7 +266,9 @@ export async function recordDebtPayment(formData: FormData) {
   let selectedAccount:
     | {
       id: string;
+      name: string;
       kind: DebtAccountKind;
+      linkedCurrentAccountName: string | null;
       outstandingAmount: string;
       totalRepaidAmount: string;
       rateInputType: DebtRateInputType;
@@ -262,7 +281,9 @@ export async function recordDebtPayment(formData: FormData) {
     const [account] = await db
       .select({
         id: debtAccounts.id,
+        name: debtAccounts.name,
         kind: debtAccounts.kind,
+        linkedCurrentAccountName: debtAccounts.linkedCurrentAccountName,
         outstandingAmount: debtAccounts.outstandingAmount,
         totalRepaidAmount: debtAccounts.totalRepaidAmount,
         rateInputType: debtAccounts.rateInputType,
@@ -297,68 +318,96 @@ export async function recordDebtPayment(formData: FormData) {
   }
 
   await assertBusinessDayUnlocked(context.shopId, payload.date);
+  let insertedPaymentId: string | undefined;
 
-  const [insertedPayment] = await db.insert(debtPayments).values({
-    shopId: context.shopId,
-    amount: payload.amount.toString(),
-    debtAccountId: resolvedDebtAccountId,
-    paymentDate: payload.date,
-    targetType: resolvedTargetType,
-    source: payload.source,
-  }).returning({ id: debtPayments.id });
-
-  if (selectedAccount) {
-    const paymentAmount = new Decimal(payload.amount);
-    const outstandingBefore = new Decimal(selectedAccount.outstandingAmount || "0");
-
-    const outstandingAfter = Decimal.max(outstandingBefore.minus(paymentAmount), 0);
-    const totalRepaidAfter = new Decimal(selectedAccount.totalRepaidAmount || "0").add(paymentAmount);
-
-    const installmentBased = isInstallmentRateType(selectedAccount.rateInputType);
-
-    let remainingInstallmentsAfter = selectedAccount.remainingInstallments;
-    if (installmentBased && remainingInstallmentsAfter > 0) {
-      const perInstallment = new Decimal(selectedAccount.installmentAmount || "0");
-      const paidInstallments = perInstallment.gt(0)
-        ? Math.max(1, paymentAmount.div(perInstallment).floor().toNumber())
-        : 1;
-
-      remainingInstallmentsAfter = Math.max(
-        selectedAccount.remainingInstallments - paidInstallments,
-        0,
-      );
-    }
-
-    const nextIsActive = installmentBased
-      ? outstandingAfter.gt(0) && remainingInstallmentsAfter > 0
-      : outstandingAfter.gt(0);
-
-    await db
-      .update(debtAccounts)
-      .set({
-        outstandingAmount: outstandingAfter.toFixed(2),
-        totalRepaidAmount: totalRepaidAfter.toFixed(2),
-        remainingInstallments: remainingInstallmentsAfter,
-        isActive: nextIsActive,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(debtAccounts.id, selectedAccount.id),
-          eq(debtAccounts.shopId, context.shopId),
-        ),
-      );
-
-    await db.insert(debtAccountMovements).values({
+  await db.transaction(async (tx) => {
+    const [insertedPayment] = await tx.insert(debtPayments).values({
       shopId: context.shopId,
-      debtAccountId: selectedAccount.id,
-      movementType: "REPAYMENT",
-      amount: paymentAmount.toFixed(2),
-      movementDate: payload.date,
+      amount: payload.amount.toString(),
+      debtAccountId: resolvedDebtAccountId,
+      paymentDate: payload.date,
+      targetType: resolvedTargetType,
       source: payload.source,
-      notes: "Payment recorded from debt engine",
-    });
-  }
+    }).returning({ id: debtPayments.id });
+
+    insertedPaymentId = insertedPayment?.id;
+
+    if (selectedAccount) {
+      const paymentAmount = new Decimal(payload.amount);
+      const outstandingBefore = new Decimal(selectedAccount.outstandingAmount || "0");
+
+      const outstandingAfter = Decimal.max(outstandingBefore.minus(paymentAmount), 0);
+      const totalRepaidAfter = new Decimal(selectedAccount.totalRepaidAmount || "0").add(paymentAmount);
+
+      const installmentBased = isInstallmentRateType(selectedAccount.rateInputType);
+
+      let remainingInstallmentsAfter = selectedAccount.remainingInstallments;
+      if (installmentBased && remainingInstallmentsAfter > 0) {
+        const perInstallment = new Decimal(selectedAccount.installmentAmount || "0");
+        const paidInstallments = perInstallment.gt(0)
+          ? Math.max(1, paymentAmount.div(perInstallment).floor().toNumber())
+          : 1;
+
+        remainingInstallmentsAfter = Math.max(
+          selectedAccount.remainingInstallments - paidInstallments,
+          0,
+        );
+      }
+
+      const nextIsActive = installmentBased
+        ? outstandingAfter.gt(0) && remainingInstallmentsAfter > 0
+        : outstandingAfter.gt(0);
+
+      await tx
+        .update(debtAccounts)
+        .set({
+          outstandingAmount: outstandingAfter.toFixed(2),
+          totalRepaidAmount: totalRepaidAfter.toFixed(2),
+          remainingInstallments: remainingInstallmentsAfter,
+          isActive: nextIsActive,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(debtAccounts.id, selectedAccount.id),
+            eq(debtAccounts.shopId, context.shopId),
+          ),
+        );
+
+      const [insertedMovement] = await tx.insert(debtAccountMovements).values({
+        shopId: context.shopId,
+        debtAccountId: selectedAccount.id,
+        movementType: "REPAYMENT",
+        amount: paymentAmount.toFixed(2),
+        movementDate: payload.date,
+        source: payload.source,
+        notes: "Payment recorded from debt engine",
+      }).returning({ id: debtAccountMovements.id });
+
+      if (payload.source === "CA_TO_CC_TRANSFER") {
+        const linkedCaMovementId = await recordCurrentAccountMovement(tx, {
+          shopId: context.shopId,
+          movementDate: payload.date,
+          movementType: "CC_REPAYMENT_OUTFLOW",
+          amount: paymentAmount.toFixed(2),
+          direction: -1,
+          sourceType: "DEBT_REPAYMENT",
+          sourceId: insertedPayment?.id,
+          linkedDebtAccountId: selectedAccount.id,
+          linkedDebtMovementId: insertedMovement?.id,
+          description: `CA to CC repayment for ${selectedAccount.name}`,
+          preferredAccountName: selectedAccount.linkedCurrentAccountName,
+        });
+
+        if (linkedCaMovementId && insertedMovement?.id) {
+          await tx
+            .update(debtAccountMovements)
+            .set({ linkedCaMovementId })
+            .where(eq(debtAccountMovements.id, insertedMovement.id));
+        }
+      }
+    }
+  });
 
   await logAuditEvent({
     shopId: context.shopId,
@@ -366,7 +415,7 @@ export async function recordDebtPayment(formData: FormData) {
     eventDate: payload.date,
     eventType: "DEBT_PAYMENT_RECORDED",
     entityType: "DEBT_PAYMENT",
-    entityId: insertedPayment?.id,
+    entityId: insertedPaymentId,
     payload: {
       amount: payload.amount,
       targetType: resolvedTargetType,
@@ -387,6 +436,7 @@ export async function createDebtAccount(formData: FormData) {
   const parsed = createDebtAccountSchema.safeParse({
     name: formData.get("name"),
     lenderName: formData.get("lenderName") || undefined,
+    linkedCurrentAccountName: (formData.get("linkedCurrentAccountName")?.toString() || "").trim() || undefined,
     kind: formData.get("kind"),
     rateInputType: formData.get("rateInputType"),
     creditLimit: formData.get("creditLimit") || "0",
@@ -426,6 +476,7 @@ export async function createDebtAccount(formData: FormData) {
     shopId: context.shopId,
     name: payload.name,
     lenderName: payload.lenderName,
+    linkedCurrentAccountName: payload.linkedCurrentAccountName,
     kind: payload.kind,
     rateInputType: payload.rateInputType,
     creditLimit: creditLimit.toFixed(2),
@@ -480,10 +531,14 @@ export async function updateDebtAccount(formData: FormData) {
     throw new Error("Unauthorized tenant context.");
   }
 
+  const rawMaturityDate = (formData.get("maturityDate")?.toString() || "").trim();
+  const rawLinkedCurrentAccountName = (formData.get("linkedCurrentAccountName")?.toString() || "").trim();
+
   const parsed = updateDebtAccountSchema.safeParse({
     debtAccountId: formData.get("debtAccountId"),
     name: formData.get("name"),
     lenderName: formData.get("lenderName") || undefined,
+    linkedCurrentAccountName: rawLinkedCurrentAccountName || undefined,
     kind: formData.get("kind"),
     rateInputType: formData.get("rateInputType"),
     creditLimit: formData.get("creditLimit") || "0",
@@ -496,7 +551,7 @@ export async function updateDebtAccount(formData: FormData) {
     installmentFrequency: formData.get("installmentFrequency") || "MONTHLY",
     remainingInstallments: formData.get("remainingInstallments") || "0",
     startDate: normalizeBusinessDateInput(formData.get("startDate")) || undefined,
-    maturityDate: normalizeBusinessDateInput(formData.get("maturityDate")) || undefined,
+    maturityDate: normalizeBusinessDateInput(rawMaturityDate) || undefined,
     notes: (formData.get("notes")?.toString() || "").trim() || undefined,
   });
 
@@ -553,6 +608,7 @@ export async function updateDebtAccount(formData: FormData) {
     .set({
       name: payload.name,
       lenderName: payload.lenderName,
+      linkedCurrentAccountName: rawLinkedCurrentAccountName || null,
       kind: payload.kind,
       rateInputType: payload.rateInputType,
       creditLimit: creditLimit.toFixed(2),
@@ -567,7 +623,7 @@ export async function updateDebtAccount(formData: FormData) {
       installmentFrequency: sanitizedRates.installmentFrequency,
       remainingInstallments: sanitizedRates.remainingInstallments,
       startDate: payload.startDate,
-      maturityDate: payload.maturityDate,
+      maturityDate: rawMaturityDate ? payload.maturityDate : null,
       notes: payload.notes,
       isActive: nextIsActive,
       updatedAt: new Date(),
@@ -631,7 +687,9 @@ export async function recordDebtDrawdown(formData: FormData) {
   const [account] = await db
     .select({
       id: debtAccounts.id,
+      name: debtAccounts.name,
       kind: debtAccounts.kind,
+      linkedCurrentAccountName: debtAccounts.linkedCurrentAccountName,
       creditLimit: debtAccounts.creditLimit,
       outstandingAmount: debtAccounts.outstandingAmount,
       totalDrawnAmount: debtAccounts.totalDrawnAmount,
@@ -656,24 +714,50 @@ export async function recordDebtDrawdown(formData: FormData) {
 
   const totalDrawnAfter = new Decimal(account.totalDrawnAmount || "0").add(drawAmount);
 
-  await db
-    .update(debtAccounts)
-    .set({
-      outstandingAmount: outstandingAfter.toFixed(2),
-      totalDrawnAmount: totalDrawnAfter.toFixed(2),
-      isActive: true,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(debtAccounts.id, account.id), eq(debtAccounts.shopId, context.shopId)));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(debtAccounts)
+      .set({
+        outstandingAmount: outstandingAfter.toFixed(2),
+        totalDrawnAmount: totalDrawnAfter.toFixed(2),
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(debtAccounts.id, account.id), eq(debtAccounts.shopId, context.shopId)));
 
-  await db.insert(debtAccountMovements).values({
-    shopId: context.shopId,
-    debtAccountId: account.id,
-    movementType: "DRAWDOWN",
-    amount: drawAmount.toFixed(2),
-    movementDate: payload.date,
-    source: payload.source,
-    notes: payload.notes,
+    const [insertedMovement] = await tx.insert(debtAccountMovements).values({
+      shopId: context.shopId,
+      debtAccountId: account.id,
+      movementType: "DRAWDOWN",
+      amount: drawAmount.toFixed(2),
+      movementDate: payload.date,
+      source: payload.source,
+      notes: payload.notes,
+    }).returning({ id: debtAccountMovements.id });
+
+    if (payload.source === "CC_TO_CA_TRANSFER") {
+      const linkedCaMovementId = await recordCurrentAccountMovement(tx, {
+        shopId: context.shopId,
+        movementDate: payload.date,
+        movementType: "CC_DRAWDOWN_INFLOW",
+        amount: drawAmount.toFixed(2),
+        direction: 1,
+        sourceType: "DEBT_DRAWDOWN",
+        sourceId: insertedMovement?.id,
+        linkedDebtAccountId: account.id,
+        linkedDebtMovementId: insertedMovement?.id,
+        description: `CC drawdown to CA from ${account.name}`,
+        preferredAccountName: account.linkedCurrentAccountName,
+        notes: payload.notes,
+      });
+
+      if (linkedCaMovementId && insertedMovement?.id) {
+        await tx
+          .update(debtAccountMovements)
+          .set({ linkedCaMovementId })
+          .where(eq(debtAccountMovements.id, insertedMovement.id));
+      }
+    }
   });
 
   await logAuditEvent({
@@ -688,6 +772,71 @@ export async function recordDebtDrawdown(formData: FormData) {
       kind: account.kind,
       source: payload.source,
       notes: payload.notes,
+    },
+  });
+
+  revalidatePath("/debt-engine");
+}
+
+export async function recordCurrentAccountAdjustment(formData: FormData) {
+  const context = await getTenantContext();
+
+  if (!context) {
+    throw new Error("Unauthorized tenant context.");
+  }
+
+  const parsed = currentAccountAdjustmentSchema.safeParse({
+    amount: formData.get("amount"),
+    date: normalizeBusinessDateInput(formData.get("date")),
+    direction: formData.get("direction"),
+    notes: (formData.get("notes")?.toString() || "").trim() || undefined,
+    accountName: (formData.get("accountName")?.toString() || "").trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid current account adjustment payload.");
+  }
+
+  await assertTenantShopOwnership(context.shopId, context.userId);
+  const payload = parsed.data;
+
+  await assertBusinessDayUnlocked(context.shopId, payload.date);
+
+  const movementType = payload.direction === "IN"
+    ? "EXTERNAL_DEPOSIT_INFLOW"
+    : "ADJUSTMENT";
+
+  const direction = payload.direction === "IN" ? 1 : -1;
+
+  const movementId = await db.transaction(async (tx) => {
+    return recordCurrentAccountMovement(tx, {
+      shopId: context.shopId,
+      movementDate: payload.date,
+      movementType,
+      amount: payload.amount.toString(),
+      direction,
+      sourceType: "MANUAL_ADJUSTMENT",
+      description: payload.direction === "IN"
+        ? "Manual CA inflow recorded"
+        : "Manual CA outflow/adjustment recorded",
+      notes: payload.notes,
+      preferredAccountName: payload.accountName,
+    });
+  });
+
+  await logAuditEvent({
+    shopId: context.shopId,
+    actorUserId: context.userId,
+    eventDate: payload.date,
+    eventType: "CURRENT_ACCOUNT_ADJUSTMENT_RECORDED",
+    entityType: "CURRENT_ACCOUNT_MOVEMENT",
+    entityId: movementId || undefined,
+    payload: {
+      amount: payload.amount,
+      direction: payload.direction,
+      movementType,
+      notes: payload.notes || null,
+      accountName: payload.accountName || null,
     },
   });
 

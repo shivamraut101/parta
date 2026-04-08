@@ -45,7 +45,8 @@ export function DailyPartaForm({
   persistedExpenseCount: number;
   persistedLocalDailyLoanPayment: string;
 }) {
-  const [isPending, startTransition] = useTransition();
+  const [isSavingDaily, startSaveTransition] = useTransition();
+  const [isAddingExpense, startExpenseTransition] = useTransition();
 
   const [date, setDate] = useState(defaultDate);
   const [cashSales, setCashSales] = useState("0");
@@ -108,7 +109,7 @@ export function DailyPartaForm({
     fd.set("marginApplied", margin);
     fd.set("includeLocalDailyLoanPayment", includeLocalDailyLoanPayment ? "true" : "false");
     fd.set("localDailyLoanPayment", localDailyLoanPayment);
-    startTransition(async () => {
+    startSaveTransition(async () => {
       await saveDailyEntry(fd);
       setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
     });
@@ -134,7 +135,7 @@ export function DailyPartaForm({
     setExpenseAmount("");
     setExpenseDescription("");
 
-    startTransition(async () => {
+    startExpenseTransition(async () => {
       await addExpense(fd);
       setExpenseSaved(true);
       setTimeout(() => setExpenseSaved(false), 2500);
@@ -332,10 +333,10 @@ export function DailyPartaForm({
         <button
           type="button"
           onClick={handleSaveDailyEntry}
-          disabled={isPending}
+          disabled={isSavingDaily}
           className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800 disabled:opacity-60"
         >
-          {isPending ? "Saving..." : "Galla Band Karo ✓"}
+          {isSavingDaily ? "Galla save ho raha hai..." : "Galla Band Karo ✓"}
         </button>
 
         {savedAt ? (
@@ -421,10 +422,10 @@ export function DailyPartaForm({
         <button
           type="button"
           onClick={handleAddExpense}
-          disabled={isPending}
+          disabled={isAddingExpense}
           className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white text-base font-bold text-stone-800 active:bg-stone-50 disabled:opacity-60"
         >
-          {isPending ? "Logging..." : "+ Kharcha Add Karo"}
+          {isAddingExpense ? "Kharcha add ho raha hai..." : "+ Kharcha Add Karo"}
         </button>
 
         {expenseSaved ? (

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { updatePasswordFromReset } from "@/app/auth/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 
 type ResetPasswordPageProps = {
   searchParams?: Promise<{ error?: string }>;
@@ -65,12 +66,12 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
               className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
             />
 
-            <button
-              type="submit"
-              className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800"
+            <PendingSubmitButton
+              className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800 disabled:opacity-70"
+              pendingChildren={<span>Password update ho raha hai...</span>}
             >
               Password Update Karo
-            </button>
+            </PendingSubmitButton>
           </form>
 
           <p className="mt-4 text-center text-sm text-stone-500">

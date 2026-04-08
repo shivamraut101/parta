@@ -97,7 +97,7 @@ export function ExportButton({
         {loading ? (
           <>
             <Loader size={18} className="animate-spin" />
-            <span>Exporting...</span>
+            <span>{label} in progress...</span>
           </>
         ) : (
           <>

@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { generateSnapshotAction } from "@/app/admin/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 import { db } from "@/db";
 import { monthlySnapshots } from "@/db/schema";
 import { ExportCsvButton } from "@/components/reports/ExportCsvButton";
@@ -78,7 +79,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                 className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
               />
           </div>
-          <button type="submit" className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white">Generate</button>
+          <PendingSubmitButton
+            className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white disabled:opacity-70"
+            pendingChildren={<span>Snapshot generate ho raha hai...</span>}
+          >
+            Generate
+          </PendingSubmitButton>
           <ExportCsvButton
             monthYear={thisMonth}
             label="Export Current CSV"

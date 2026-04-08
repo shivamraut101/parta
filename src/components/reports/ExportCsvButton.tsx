@@ -40,8 +40,8 @@ export function ExportCsvButton({ monthYear, label = "Export CSV", className }: 
       disabled={loading}
       className={`${className ?? ""} transition-all active:scale-[0.985] disabled:opacity-60`}
     >
-      {loading ? <Loader size={14} className="inline animate-spin mr-1" /> : <Download size={14} className="inline mr-1" />}
-      {loading ? "Exporting..." : label}
+      {loading ? <Loader size={14} className="mr-1 inline animate-spin" /> : <Download size={14} className="mr-1 inline" />}
+      {loading ? "CSV export ho raha hai..." : label}
     </button>
   );
 }

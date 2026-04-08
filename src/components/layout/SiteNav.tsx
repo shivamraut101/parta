@@ -1,4 +1,5 @@
 import { signOutAction } from "@/app/auth/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 import { NavLinks } from "@/components/layout/NavLinks";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 
@@ -32,12 +33,12 @@ export async function SiteNav() {
 
         {/* Desktop sign out */}
         <form action={signOutAction} className="hidden sm:block">
-          <button
-            type="submit"
-            className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 transition-all hover:bg-stone-50 active:scale-[0.985]"
+          <PendingSubmitButton
+            className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 transition-all hover:bg-stone-50 active:scale-[0.985] disabled:opacity-70"
+            pendingChildren={<span>Signing out...</span>}
           >
             Sign Out
-          </button>
+          </PendingSubmitButton>
         </form>
       </div>
     </header>

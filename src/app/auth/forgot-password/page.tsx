@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requestPasswordReset } from "@/app/auth/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 
 export default function ForgotPasswordPage() {
   return (
@@ -29,12 +30,12 @@ export default function ForgotPasswordPage() {
               inputMode="email"
               className="h-14 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-base focus:border-teal-500 focus:outline-none"
             />
-            <button
-              type="submit"
-              className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800"
+            <PendingSubmitButton
+              className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800 disabled:opacity-70"
+              pendingChildren={<span>Reset link bheja ja raha hai...</span>}
             >
               Reset Link Bhejo
-            </button>
+            </PendingSubmitButton>
           </form>
 
           <p className="mt-4 text-center text-sm text-stone-500">

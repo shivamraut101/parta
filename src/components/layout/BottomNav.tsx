@@ -17,6 +17,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { signOutAction } from "@/app/auth/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 
 const mainLinks = [
   { href: "/", icon: Home, label: "Munim" },
@@ -147,9 +148,14 @@ export function BottomNav() {
               </Link>
 
               <form action={signOutAction} className="pt-2 border-t border-stone-200">
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-3 rounded-2xl p-3 transition-all hover:bg-rose-50 active:scale-[0.985] active:bg-rose-50"
+                <PendingSubmitButton
+                  className="flex w-full items-center gap-3 rounded-2xl p-3 transition-all hover:bg-rose-50 active:scale-[0.985] active:bg-rose-50 disabled:opacity-70"
+                  pendingChildren={
+                    <div className="text-left">
+                      <p className="text-sm font-bold text-rose-700">Signing out...</p>
+                      <p className="text-xs text-stone-400">Request in progress</p>
+                    </div>
+                  }
                 >
                   <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600 shrink-0">
                     <LogOut size={20} />
@@ -158,7 +164,7 @@ export function BottomNav() {
                     <p className="text-sm font-bold text-rose-700">Sign Out</p>
                     <p className="text-xs text-stone-400">App se bahar jayein</p>
                   </div>
-                </button>
+                </PendingSubmitButton>
               </form>
             </div>
           </div>

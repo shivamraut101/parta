@@ -18,6 +18,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { signOutAction } from "@/app/auth/actions";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 
 type SidebarProps = {
   adminEmail?: string;
@@ -146,13 +147,13 @@ export function AdminSidebar({ adminEmail }: SidebarProps) {
               <p className="truncate text-sm font-semibold text-white">{adminEmail || "Admin"}</p>
             </div>
             <form action={signOutAction}>
-              <button
-                type="submit"
-                className="flex w-full items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-stone-100 transition-colors hover:bg-white/10"
+              <PendingSubmitButton
+                className="flex w-full items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-stone-100 transition-colors hover:bg-white/10 disabled:opacity-70"
+                pendingChildren={<span>Logging out...</span>}
               >
                 <LogOut size={16} />
                 <span>Logout</span>
-              </button>
+              </PendingSubmitButton>
             </form>
           </div>
         </div>

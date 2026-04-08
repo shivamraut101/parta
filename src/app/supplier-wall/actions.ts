@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { debtPayments, shops, supplierTransactions, suppliers } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
+import { upsertCurrentAccountMovementBySource } from "@/lib/finance/currentAccountLedger";
 import { assertBusinessDayUnlocked } from "@/lib/lock/assertBusinessDayUnlocked";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { getBusinessDateString, normalizeBusinessDateInput } from "@/lib/time/businessDate";
@@ -30,7 +31,7 @@ const paymentSchema = z.object({
   amount: z.coerce.number().positive(),
   date: z.string().min(1),
   note: z.string().trim().optional(),
-  source: z.enum(["CASH", "UPI"]),
+  source: z.enum(["CASH", "UPI", "NEFT", "IMPS"]),
   payViaCc: z.coerce.boolean().optional().default(false),
 });
 
@@ -132,6 +133,7 @@ export async function recordSupplierPurchase(formData: FormData) {
 
   await assertTenantShopOwnership(context.shopId, context.userId);
   await assertSupplierOwnership(payload.supplierId, context.shopId);
+
   const businessDate = payload.date;
   assertNotFutureDate(businessDate);
   await assertBusinessDayUnlocked(context.shopId, businessDate);
@@ -198,6 +200,13 @@ export async function recordSupplierPayment(formData: FormData) {
 
   await assertTenantShopOwnership(context.shopId, context.userId);
   await assertSupplierOwnership(payload.supplierId, context.shopId);
+
+  const [supplierRow] = await db
+    .select({ name: suppliers.name })
+    .from(suppliers)
+    .where(and(eq(suppliers.id, payload.supplierId), eq(suppliers.shopId, context.shopId)))
+    .limit(1);
+
   const businessDate = payload.date;
   assertNotFutureDate(businessDate);
   await assertBusinessDayUnlocked(context.shopId, businessDate);
@@ -206,14 +215,14 @@ export async function recordSupplierPayment(formData: FormData) {
   const transactionTimestamp = new Date(`${businessDate}T12:00:00+05:30`);
 
   await db.transaction(async (tx) => {
-    await tx.insert(supplierTransactions).values({
+    const [insertedSupplierPayment] = await tx.insert(supplierTransactions).values({
       shopId: context.shopId,
       supplierId: payload.supplierId,
       type: "PAYMENT",
       amount: amount.toFixed(2),
       note: payload.note || null,
       createdAt: transactionTimestamp,
-    });
+    }).returning({ id: supplierTransactions.id });
 
     await tx
       .update(suppliers)
@@ -222,6 +231,20 @@ export async function recordSupplierPayment(formData: FormData) {
         lastPaymentDate: businessDate,
       })
       .where(and(eq(suppliers.id, payload.supplierId), eq(suppliers.shopId, context.shopId)));
+
+    if (!payload.payViaCc && insertedSupplierPayment?.id) {
+      await upsertCurrentAccountMovementBySource(tx, {
+        shopId: context.shopId,
+        sourceType: "SUPPLIER_PAYMENT",
+        sourceId: insertedSupplierPayment.id,
+        movementDate: businessDate,
+        movementType: "SUPPLIER_PAYMENT_OUTFLOW",
+        amount: amount.toFixed(2),
+        direction: -1,
+        description: `Supplier payment to ${supplierRow?.name || "supplier"} via ${payload.source}`,
+        notes: payload.note || undefined,
+      });
+    }
 
     if (payload.payViaCc) {
       await tx.insert(debtPayments).values({

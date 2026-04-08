@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
@@ -7,9 +8,9 @@ import {
   resetAccountData,
   reopenBusinessDay,
   updateBrandSettings,
-  updateFinancialSettings,
 } from "@/app/admin/actions";
 import { PasswordField } from "@/components/auth/PasswordField";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 import { db } from "@/db";
 import { shopMembers } from "@/db/schema";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
@@ -86,11 +87,15 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <p className="mb-3 text-base font-bold text-stone-900">Day Lock Control</p>
           <form action={lockBusinessDay} className="space-y-3">
             <input id="lockDate" name="date" defaultValue={today} required className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <button type="submit" className="h-12 w-full rounded-xl bg-amber-600 text-sm font-bold text-white">Lock Day</button>
+            <PendingSubmitButton className="h-12 w-full rounded-xl bg-amber-600 text-sm font-bold text-white disabled:opacity-70" pendingChildren={<span>Day lock ho raha hai...</span>}>
+              Lock Day
+            </PendingSubmitButton>
           </form>
           <form action={reopenBusinessDay} className="mt-3 space-y-3">
             <input id="unlockDate" name="date" defaultValue={today} required className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <button type="submit" className="h-12 w-full rounded-xl bg-sky-700 text-sm font-bold text-white">Reopen Day</button>
+            <PendingSubmitButton className="h-12 w-full rounded-xl bg-sky-700 text-sm font-bold text-white disabled:opacity-70" pendingChildren={<span>Day reopen ho raha hai...</span>}>
+              Reopen Day
+            </PendingSubmitButton>
           </form>
         </div>
 
@@ -102,20 +107,23 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
             <input id="primaryColor" name="primaryColor" defaultValue={tenant.brand.primaryColor} pattern="^#[0-9a-fA-F]{6}$" required placeholder="#0f766e" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
             <input id="currencySymbol" name="currencySymbol" defaultValue={tenant.brand.currencySymbol} required placeholder="₹" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
             <input id="logoUrl" name="logoUrl" defaultValue={tenant.brand.logoUrl ?? ""} placeholder="Logo URL (optional)" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <button type="submit" className="h-12 w-full rounded-xl bg-stone-900 text-sm font-bold text-white">Save Brand</button>
+            <PendingSubmitButton className="h-12 w-full rounded-xl bg-stone-900 text-sm font-bold text-white disabled:opacity-70" pendingChildren={<span>Brand settings save ho rahi hain...</span>}>
+              Save Brand
+            </PendingSubmitButton>
           </form>
         </div>
 
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100">
-          <p className="mb-3 text-base font-bold text-stone-900">Financial Control</p>
-          <form action={updateFinancialSettings} className="space-y-3">
-            <input id="ccLimit" name="ccLimit" defaultValue={tenant.financialConfig.ccLimit} required placeholder="CC Limit" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="bankInterestRatePa" name="bankInterestRatePa" defaultValue={String(Number(tenant.financialConfig.bankInterestRatePa) * 100)} required placeholder="Bank Interest Annual %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="dailyLocalDrain" name="dailyLocalDrain" defaultValue={tenant.financialConfig.dailyLocalDrain} required placeholder="Daily Local Drain" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="localLoanAprMonthly" name="localLoanAprMonthly" defaultValue={String(Number(tenant.financialConfig.localLoanAprMonthly) * 100)} required placeholder="Local Loan Monthly %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <input id="baseMarginDefault" name="baseMarginDefault" defaultValue={String(Number(tenant.financialConfig.baseMarginDefault) * 100)} required placeholder="Base Margin %" className="h-12 w-full rounded-xl border-2 border-stone-200 px-4 text-sm" />
-            <button type="submit" className="h-12 w-full rounded-xl bg-emerald-700 text-sm font-bold text-white">Save Financial</button>
-          </form>
+          <p className="mb-2 text-base font-bold text-stone-900">Financial Control</p>
+          <p className="mb-3 text-sm text-stone-500">
+            Financial settings ab single source ke liye Financial Identity page par maintain hoti hain.
+          </p>
+          <Link
+            href="/financial-identity"
+            className="flex h-12 w-full items-center justify-center rounded-xl bg-emerald-700 text-sm font-bold text-white hover:bg-emerald-800"
+          >
+            Open Financial Identity
+          </Link>
         </div>
 
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-100">
@@ -136,7 +144,9 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                 </label>
               ))}
             </div>
-            <button type="submit" className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white">Send Invite</button>
+            <PendingSubmitButton className="h-12 w-full rounded-xl bg-teal-700 text-sm font-bold text-white disabled:opacity-70" pendingChildren={<span>Invite bheja ja raha hai...</span>}>
+              Send Invite
+            </PendingSubmitButton>
           </form>
 
           {members.length > 0 ? (
@@ -172,9 +182,9 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
               placeholder='Type RESET to confirm'
               className="h-12 w-full rounded-xl border-2 border-red-200 bg-white px-4 text-sm text-stone-900 focus:border-red-500 focus:outline-none"
             />
-            <button type="submit" className="h-12 w-full rounded-xl bg-red-700 text-sm font-bold text-white active:bg-red-800">
+            <PendingSubmitButton className="h-12 w-full rounded-xl bg-red-700 text-sm font-bold text-white active:bg-red-800 disabled:opacity-70" pendingChildren={<span>Account data reset ho raha hai...</span>}>
               Reset Account Data
-            </button>
+            </PendingSubmitButton>
           </form>
         </div>
       </section>

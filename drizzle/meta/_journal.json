@@ -29,6 +29,20 @@
       "when": 1775501442864,
       "tag": "0003_groovy_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775688000000,
+      "tag": "0011_debt_transfer_sources_and_linked_ca",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775688060000,
+      "tag": "0012_current_account_ledger_phase1",
+      "breakpoints": true
     }
   ]
 }

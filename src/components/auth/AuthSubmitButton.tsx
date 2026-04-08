@@ -5,10 +5,11 @@ import { useFormStatus } from "react-dom";
 
 type Props = {
   label: string;
+  loadingLabel?: string;
   className?: string;
 };
 
-export function AuthSubmitButton({ label, className }: Props) {
+export function AuthSubmitButton({ label, loadingLabel, className }: Props) {
   const { pending } = useFormStatus();
 
   return (
@@ -20,7 +21,7 @@ export function AuthSubmitButton({ label, className }: Props) {
       {pending ? (
         <>
           <Loader size={18} className="animate-spin" />
-          <span>Please wait...</span>
+          <span>{loadingLabel ?? "Please wait..."}</span>
         </>
       ) : (
         <span>{label}</span>

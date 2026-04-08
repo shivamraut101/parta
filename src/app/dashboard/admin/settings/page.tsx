@@ -1,6 +1,7 @@
 import { Lock, Key, LogOut } from "lucide-react";
 
 import { AdminHeader } from "@/components/admin/AdminHeader";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 import { requireAdminContext } from "@/lib/admin/adminAuth";
 import { logAdminAction } from "@/lib/admin/adminActions";
 import { signOutAction } from "@/app/auth/actions";
@@ -92,13 +93,13 @@ export default async function SettingsPage() {
           <h2 className="mb-4 text-lg font-bold text-stone-900">Session</h2>
           <div>
             <form action={signOutAction}>
-              <button
-                type="submit"
-                className="inline-flex items-center gap-3 rounded-lg bg-red-600 px-6 py-3 font-semibold text-white hover:bg-red-700 transition-colors"
+              <PendingSubmitButton
+                className="inline-flex items-center gap-3 rounded-lg bg-red-600 px-6 py-3 font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-70"
+                pendingChildren={<span>Logging out...</span>}
               >
                 <LogOut size={18} />
                 <span>Logout</span>
-              </button>
+              </PendingSubmitButton>
             </form>
           </div>
         </div>

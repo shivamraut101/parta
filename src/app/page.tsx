@@ -17,6 +17,7 @@ import { signInWithPassword, signUpWithPassword } from "@/app/auth/actions";
 import { createInitialShop } from "@/app/onboarding/actions";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { AuthSubmitButton } from "@/components/auth/AuthSubmitButton";
+import { PendingSubmitButton } from "@/components/ui/PendingSubmitButton";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { db } from "@/db";
 import { dailySummaries, debtPayments, suppliers } from "@/db/schema";
@@ -163,6 +164,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               />
               <AuthSubmitButton
                 label="Sign In करें"
+                loadingLabel="Signing in..."
                 className="h-14 w-full rounded-xl bg-gradient-to-r from-teal-700 to-cyan-700 text-base font-bold text-white shadow-md shadow-teal-800/25 active:from-teal-800 active:to-cyan-800"
               />
               <div className="text-center">
@@ -201,6 +203,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               />
               <AuthSubmitButton
                 label="Account बनाएं"
+                loadingLabel="Creating account..."
                 className="h-14 w-full rounded-xl bg-white text-base font-bold text-stone-900 active:bg-stone-200"
               />
             </form>
@@ -329,12 +332,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <input type="hidden" name="primaryColor" value="#0f766e" />
           <input type="hidden" name="currencySymbol" value="₹" />
 
-          <button
-            type="submit"
-            className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800"
+          <PendingSubmitButton
+            className="h-14 w-full rounded-xl bg-teal-700 text-base font-bold text-white active:bg-teal-800 disabled:opacity-70"
+            pendingChildren={
+              <span className="inline-flex items-center justify-center gap-2">
+                <span>Dukaan setup ho rahi hai...</span>
+              </span>
+            }
           >
             Dukaan Shuru Karo →
-          </button>
+          </PendingSubmitButton>
         </form>
       </main>
     );

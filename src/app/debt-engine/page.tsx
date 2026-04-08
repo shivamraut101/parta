@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { DebtOptimizerCard } from "@/app/debt-engine/DebtOptimizerCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/db";
-import { debtAccountMovements, debtAccounts } from "@/db/schema";
+import { currentAccountAccounts, currentAccountMovements, debtAccountMovements, debtAccounts } from "@/db/schema";
 import { getInterestLeakMetrics } from "@/lib/debt/getInterestLeakMetrics";
 import { getRepaymentRecommendation } from "@/lib/debt/getRepaymentRecommendation";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
@@ -35,6 +35,7 @@ export default async function DebtEnginePage() {
     id: string;
     name: string;
     lenderName: string | null;
+    linkedCurrentAccountName: string | null;
     kind: "BANK_CC" | "BANK_TERM_LOAN" | "BANK_OD" | "BANK_BILL_DISCOUNT" | "LOCAL_DAILY" | "LOCAL_MONTHLY" | "LOCAL_BULLET" | "LOCAL_FLEXI";
     creditLimit: string;
     principalAmount: string;
@@ -59,7 +60,26 @@ export default async function DebtEnginePage() {
     movementType: "OPENING" | "DRAWDOWN" | "REPAYMENT" | "ADJUSTMENT";
     amount: string;
     movementDate: string;
-    source: "CASH" | "UPI" | null;
+    source: "CASH" | "UPI" | "NEFT" | "IMPS" | "CC_TO_CA_TRANSFER" | "CA_TO_CC_TRANSFER" | null;
+    notes: string | null;
+  }> = [];
+
+  let currentAccount:
+    | {
+      id: string;
+      accountName: string;
+      openingBalance: string;
+      currentBalance: string;
+    }
+    | null = null;
+
+  let recentCurrentAccountMovements: Array<{
+    id: string;
+    movementDate: string;
+    movementType: "SALES_INFLOW" | "CC_DRAWDOWN_INFLOW" | "EXTERNAL_DEPOSIT_INFLOW" | "SUPPLIER_PAYMENT_OUTFLOW" | "CC_REPAYMENT_OUTFLOW" | "EXPENSE_OUTFLOW" | "ADJUSTMENT";
+    amount: string;
+    direction: number;
+    description: string | null;
     notes: string | null;
   }> = [];
 
@@ -69,6 +89,7 @@ export default async function DebtEnginePage() {
         id: debtAccounts.id,
         name: debtAccounts.name,
         lenderName: debtAccounts.lenderName,
+        linkedCurrentAccountName: debtAccounts.linkedCurrentAccountName,
         kind: debtAccounts.kind,
         creditLimit: debtAccounts.creditLimit,
         principalAmount: debtAccounts.principalAmount,
@@ -112,12 +133,51 @@ export default async function DebtEnginePage() {
     recentMovements = [];
   }
 
+  try {
+    const [caAccount] = await db
+      .select({
+        id: currentAccountAccounts.id,
+        accountName: currentAccountAccounts.accountName,
+        openingBalance: currentAccountAccounts.openingBalance,
+        currentBalance: currentAccountAccounts.currentBalance,
+      })
+      .from(currentAccountAccounts)
+      .where(eq(currentAccountAccounts.shopId, tenant.shopId))
+      .limit(1);
+
+    currentAccount = caAccount || null;
+  } catch {
+    currentAccount = null;
+  }
+
+  try {
+    recentCurrentAccountMovements = await db
+      .select({
+        id: currentAccountMovements.id,
+        movementDate: currentAccountMovements.movementDate,
+        movementType: currentAccountMovements.movementType,
+        amount: currentAccountMovements.amount,
+        direction: currentAccountMovements.direction,
+        description: currentAccountMovements.description,
+        notes: currentAccountMovements.notes,
+      })
+      .from(currentAccountMovements)
+      .where(eq(currentAccountMovements.shopId, tenant.shopId))
+      .orderBy(desc(currentAccountMovements.movementDate), desc(currentAccountMovements.createdAt))
+      .limit(8);
+  } catch {
+    recentCurrentAccountMovements = [];
+  }
+
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-24 pt-4">
       <div className="mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Karj</p>
         <h1 className="text-2xl font-black text-stone-900">Debt Engine</h1>
         <p className="mt-0.5 text-sm text-stone-500">Pehle mehenga byaaj chukao</p>
+        <p className="mt-1 text-xs text-stone-500">
+          Flexible setup: Sirf jo account aap use karte ho wahi add karo. CC/CA optional hai.
+        </p>
       </div>
 
       <section className="mb-4 grid grid-cols-2 gap-3">
@@ -147,6 +207,7 @@ export default async function DebtEnginePage() {
             id: a.id,
             name: a.name,
             lenderName: a.lenderName,
+            linkedCurrentAccountName: a.linkedCurrentAccountName,
             kind: a.kind,
             creditLimit: a.creditLimit,
             principalAmount: a.principalAmount,
@@ -165,6 +226,8 @@ export default async function DebtEnginePage() {
             rateInputType: a.rateInputType,
           }))}
           recentMovements={recentMovements}
+          currentAccount={currentAccount}
+          recentCurrentAccountMovements={recentCurrentAccountMovements}
           recommendation={{
             priorityTarget: recommendation.priorityTarget,
             recommendedPayment: recommendation.recommendedPayment.toString(),

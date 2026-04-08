@@ -9,6 +9,7 @@ import {
   recordSupplierPurchase,
   recordSupplierReturn,
 } from "@/app/supplier-wall/actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select-modern";
 
 type SupplierCardData = {
   id: string;
@@ -50,7 +51,7 @@ export function SupplierWallClient({
   const [amount, setAmount] = useState("0");
   const [txDate, setTxDate] = useState(todayBusinessDate);
   const [note, setNote] = useState("");
-  const [source, setSource] = useState<"CASH" | "UPI">("CASH");
+  const [source, setSource] = useState<"CASH" | "UPI" | "NEFT" | "IMPS">("CASH");
   const [payViaCc, setPayViaCc] = useState(false);
 
   const [showAddSupplier, setShowAddSupplier] = useState(false);
@@ -274,15 +275,20 @@ export function SupplierWallClient({
                     <label htmlFor="source" className="mb-1.5 block text-xs font-semibold text-stone-500">
                       Source
                     </label>
-                    <select
-                      id="source"
+                    <Select
                       value={source}
-                      onChange={(event) => setSource(event.target.value as "CASH" | "UPI")}
-                      className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm text-stone-900 focus:border-teal-500 focus:outline-none"
+                      onValueChange={(value) => setSource(value as "CASH" | "UPI" | "NEFT" | "IMPS")}
                     >
-                      <option value="CASH">Cash</option>
-                      <option value="UPI">UPI</option>
-                    </select>
+                      <SelectTrigger id="source" className="h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm text-stone-900 focus:ring-teal-500">
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                        <SelectItem value="NEFT">NEFT</SelectItem>
+                        <SelectItem value="IMPS">IMPS</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <label className="flex items-center gap-2 text-sm text-stone-700">
@@ -311,7 +317,13 @@ export function SupplierWallClient({
                 disabled={isPending}
                 className="h-12 flex-1 rounded-xl bg-teal-700 text-sm font-bold text-white disabled:opacity-60"
               >
-                {isPending ? "Saving..." : "Save"}
+                {isPending
+                  ? openModal?.mode === "PURCHASE"
+                    ? "Purchase save ho rahi hai..."
+                    : openModal?.mode === "RETURN"
+                      ? "Return save ho raha hai..."
+                      : "Payment save ho raha hai..."
+                  : "Save"}
               </button>
             </div>
           </div>
@@ -382,7 +394,7 @@ export function SupplierWallClient({
                 disabled={isAddPending || !newName.trim() || !newCategory.trim()}
                 className="h-12 flex-1 rounded-xl bg-teal-700 text-sm font-bold text-white disabled:opacity-60"
               >
-                {isAddPending ? "Adding..." : "Add"}
+                {isAddPending ? "Supplier add ho raha hai..." : "Add"}
               </button>
             </div>
           </div>

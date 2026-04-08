@@ -9,6 +9,10 @@ import { LOCAL_DAILY_LOAN_PAYMENT_DESC } from "@/app/daily-parta/constants";
 import { db } from "@/db";
 import { corrections, dailySummaries, expenses, shops } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit/logAuditEvent";
+import {
+  recordCurrentAccountMovement,
+  upsertCurrentAccountMovementBySource,
+} from "@/lib/finance/currentAccountLedger";
 import { assertBusinessDayUnlocked } from "@/lib/lock/assertBusinessDayUnlocked";
 import { getTenantContext } from "@/lib/tenant/getTenantContext";
 import { normalizeBusinessDateInput } from "@/lib/time/businessDate";
@@ -73,36 +77,24 @@ export async function saveDailyEntry(formData: FormData) {
   const payload = parsed.data;
   await assertBusinessDayUnlocked(context.shopId, payload.date);
 
-  const totalSales = new Decimal(payload.totalSalesCash).add(payload.totalSalesUpi);
-  const estimatedGrossProfit = totalSales.mul(new Decimal(payload.marginApplied).div(100));
-  const localDailyLoanPayment = payload.includeLocalDailyLoanPayment
-    ? new Decimal(payload.localDailyLoanPayment)
-    : new Decimal(0);
-
-  await db
-    .insert(dailySummaries)
-    .values({
-      shopId: context.shopId,
-      summaryDate: payload.date,
-      totalSalesCash: payload.totalSalesCash.toString(),
-      totalSalesUpi: payload.totalSalesUpi.toString(),
-      marginApplied: payload.marginApplied.toString(),
-      estimatedGrossProfit: estimatedGrossProfit.toFixed(2),
+  const [existingSummary] = await db
+    .select({
+      id: dailySummaries.id,
     })
-    .onConflictDoUpdate({
-      target: [dailySummaries.shopId, dailySummaries.summaryDate],
-      set: {
-        totalSalesCash: payload.totalSalesCash.toString(),
-        totalSalesUpi: payload.totalSalesUpi.toString(),
-        marginApplied: payload.marginApplied.toString(),
-        estimatedGrossProfit: estimatedGrossProfit.toFixed(2),
-        updatedAt: new Date(),
-      },
-    });
+    .from(dailySummaries)
+    .where(
+      and(
+        eq(dailySummaries.shopId, context.shopId),
+        eq(dailySummaries.summaryDate, payload.date),
+      ),
+    )
+    .limit(1);
 
-  // Keep a single editable daily loan payment marker row so re-saving updates the value.
-  await db
-    .delete(expenses)
+  const [existingLocalDailyLoanMarker] = await db
+    .select({
+      amount: expenses.amount,
+    })
+    .from(expenses)
     .where(
       and(
         eq(expenses.shopId, context.shopId),
@@ -110,17 +102,101 @@ export async function saveDailyEntry(formData: FormData) {
         eq(expenses.category, "MISC"),
         eq(expenses.description, LOCAL_DAILY_LOAN_PAYMENT_DESC),
       ),
-    );
+    )
+    .limit(1);
 
-  if (localDailyLoanPayment.gt(0)) {
-    await db.insert(expenses).values({
-      shopId: context.shopId,
-      expenseDate: payload.date,
-      amount: localDailyLoanPayment.toString(),
-      category: "MISC",
-      description: LOCAL_DAILY_LOAN_PAYMENT_DESC,
-    });
-  }
+  const totalSales = new Decimal(payload.totalSalesCash).add(payload.totalSalesUpi);
+  const estimatedGrossProfit = totalSales.mul(new Decimal(payload.marginApplied).div(100));
+  const localDailyLoanPayment = payload.includeLocalDailyLoanPayment
+    ? new Decimal(payload.localDailyLoanPayment)
+    : new Decimal(0);
+
+  await db.transaction(async (tx) => {
+    const [upsertedSummary] = await tx
+      .insert(dailySummaries)
+      .values({
+        shopId: context.shopId,
+        summaryDate: payload.date,
+        totalSalesCash: payload.totalSalesCash.toString(),
+        totalSalesUpi: payload.totalSalesUpi.toString(),
+        marginApplied: payload.marginApplied.toString(),
+        estimatedGrossProfit: estimatedGrossProfit.toFixed(2),
+      })
+      .onConflictDoUpdate({
+        target: [dailySummaries.shopId, dailySummaries.summaryDate],
+        set: {
+          totalSalesCash: payload.totalSalesCash.toString(),
+          totalSalesUpi: payload.totalSalesUpi.toString(),
+          marginApplied: payload.marginApplied.toString(),
+          estimatedGrossProfit: estimatedGrossProfit.toFixed(2),
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: dailySummaries.id });
+
+    const summaryId = upsertedSummary?.id || existingSummary?.id;
+    if (summaryId) {
+      await upsertCurrentAccountMovementBySource(tx, {
+        shopId: context.shopId,
+        sourceType: "SALES",
+        sourceId: summaryId,
+        movementDate: payload.date,
+        movementType: "SALES_INFLOW",
+        amount: totalSales.toFixed(2),
+        direction: 1,
+        description: "Daily sales inflow (Cash + UPI)",
+      });
+    }
+
+    // Keep a single editable daily loan payment marker row so re-saving updates the value.
+    await tx
+      .delete(expenses)
+      .where(
+        and(
+          eq(expenses.shopId, context.shopId),
+          eq(expenses.expenseDate, payload.date),
+          eq(expenses.category, "MISC"),
+          eq(expenses.description, LOCAL_DAILY_LOAN_PAYMENT_DESC),
+        ),
+      );
+
+    if (localDailyLoanPayment.gt(0)) {
+      await tx.insert(expenses).values({
+        shopId: context.shopId,
+        expenseDate: payload.date,
+        amount: localDailyLoanPayment.toFixed(2),
+        category: "MISC",
+        description: LOCAL_DAILY_LOAN_PAYMENT_DESC,
+      });
+    }
+
+    const previousLocalDailyLoanAmount = new Decimal(existingLocalDailyLoanMarker?.amount || "0");
+    const localDailyLoanDelta = localDailyLoanPayment.minus(previousLocalDailyLoanAmount);
+
+    if (localDailyLoanDelta.gt(0)) {
+      await recordCurrentAccountMovement(tx, {
+        shopId: context.shopId,
+        movementDate: payload.date,
+        movementType: "EXPENSE_OUTFLOW",
+        amount: localDailyLoanDelta.toFixed(2),
+        direction: -1,
+        sourceType: "MANUAL_ADJUSTMENT",
+        description: "Daily local loan payment (delta increase)",
+        notes: LOCAL_DAILY_LOAN_PAYMENT_DESC,
+      });
+    } else if (localDailyLoanDelta.lt(0)) {
+      await recordCurrentAccountMovement(tx, {
+        shopId: context.shopId,
+        movementDate: payload.date,
+        movementType: "ADJUSTMENT",
+        amount: localDailyLoanDelta.abs().toFixed(2),
+        direction: 1,
+        sourceType: "MANUAL_ADJUSTMENT",
+        description: "Daily local loan payment correction (delta decrease)",
+        notes: LOCAL_DAILY_LOAN_PAYMENT_DESC,
+      });
+    }
+  });
 
   await logAuditEvent({
     shopId: context.shopId,
@@ -163,13 +239,33 @@ export async function addExpense(formData: FormData) {
   const payload = parsed.data;
   await assertBusinessDayUnlocked(context.shopId, payload.date);
 
-  const [insertedExpense] = await db.insert(expenses).values({
-    shopId: context.shopId,
-    expenseDate: payload.date,
-    amount: payload.amount.toString(),
-    category: payload.category,
-    description: payload.description || null,
-  }).returning({ id: expenses.id });
+  let insertedExpenseId: string | undefined;
+
+  await db.transaction(async (tx) => {
+    const [insertedExpense] = await tx.insert(expenses).values({
+      shopId: context.shopId,
+      expenseDate: payload.date,
+      amount: payload.amount.toString(),
+      category: payload.category,
+      description: payload.description || null,
+    }).returning({ id: expenses.id });
+
+    insertedExpenseId = insertedExpense?.id;
+
+    if (insertedExpenseId) {
+      await upsertCurrentAccountMovementBySource(tx, {
+        shopId: context.shopId,
+        sourceType: "EXPENSE",
+        sourceId: insertedExpenseId,
+        movementDate: payload.date,
+        movementType: "EXPENSE_OUTFLOW",
+        amount: payload.amount.toString(),
+        direction: -1,
+        description: `Expense outflow (${payload.category})`,
+        notes: payload.description || undefined,
+      });
+    }
+  });
 
   await logAuditEvent({
     shopId: context.shopId,
@@ -177,7 +273,7 @@ export async function addExpense(formData: FormData) {
     eventDate: payload.date,
     eventType: "EXPENSE_ADDED",
     entityType: "EXPENSE",
-    entityId: insertedExpense?.id,
+    entityId: insertedExpenseId,
     payload: {
       amount: payload.amount,
       category: payload.category,
@@ -236,18 +332,36 @@ export async function voidDailyEntry(formData: FormData) {
 
   const voidedAt = new Date();
 
-  await db
-    .update(dailySummaries)
-    .set({ isVoided: true, voidReason: reason, updatedAt: voidedAt })
-    .where(eq(dailySummaries.id, summaryId));
+  let correctionId: string | undefined;
 
-  const [correction] = await db.insert(corrections).values({
-    shopId: context.shopId,
-    entityType: "DAILY_SUMMARY",
-    entityId: summaryId,
-    reason,
-    correctedBy: context.userId,
-  }).returning({ id: corrections.id });
+  await db.transaction(async (tx) => {
+    await tx
+      .update(dailySummaries)
+      .set({ isVoided: true, voidReason: reason, updatedAt: voidedAt })
+      .where(eq(dailySummaries.id, summaryId));
+
+    const [correction] = await tx.insert(corrections).values({
+      shopId: context.shopId,
+      entityType: "DAILY_SUMMARY",
+      entityId: summaryId,
+      reason,
+      correctedBy: context.userId,
+    }).returning({ id: corrections.id });
+
+    correctionId = correction?.id;
+
+    await upsertCurrentAccountMovementBySource(tx, {
+      shopId: context.shopId,
+      sourceType: "SALES",
+      sourceId: summaryId,
+      movementDate: summary.summaryDate,
+      movementType: "SALES_INFLOW",
+      amount: "0",
+      direction: 1,
+      description: "Daily sales inflow removed due to void",
+      notes: reason,
+    });
+  });
 
   await logAuditEvent({
     shopId: context.shopId,
@@ -258,7 +372,7 @@ export async function voidDailyEntry(formData: FormData) {
     entityId: summaryId,
     payload: {
       reason,
-      correctionId: correction?.id,
+      correctionId,
       voidedAt: voidedAt.toISOString(),
       preVoid: {
         totalSalesCash: summary.totalSalesCash,

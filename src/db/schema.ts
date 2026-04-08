@@ -136,6 +136,29 @@ export const debtTargetTypeEnum = pgEnum("debt_target_type", [
 export const debtPaymentSourceEnum = pgEnum("debt_payment_source", [
   "CASH",
   "UPI",
+  "NEFT",
+  "IMPS",
+  "CC_TO_CA_TRANSFER",
+  "CA_TO_CC_TRANSFER",
+]);
+
+export const caMovementTypeEnum = pgEnum("ca_movement_type", [
+  "SALES_INFLOW",
+  "CC_DRAWDOWN_INFLOW",
+  "EXTERNAL_DEPOSIT_INFLOW",
+  "SUPPLIER_PAYMENT_OUTFLOW",
+  "CC_REPAYMENT_OUTFLOW",
+  "EXPENSE_OUTFLOW",
+  "ADJUSTMENT",
+]);
+
+export const caSourceTypeEnum = pgEnum("ca_source_type", [
+  "SALES",
+  "DEBT_DRAWDOWN",
+  "SUPPLIER_PAYMENT",
+  "EXPENSE",
+  "DEBT_REPAYMENT",
+  "MANUAL_ADJUSTMENT",
 ]);
 
 export const debtAccountKindEnum = pgEnum("debt_account_kind", [
@@ -180,6 +203,7 @@ export const debtAccounts = pgTable(
       .references(() => shops.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 160 }).notNull(),
     lenderName: varchar("lender_name", { length: 160 }),
+    linkedCurrentAccountName: varchar("linked_current_account_name", { length: 160 }),
     kind: debtAccountKindEnum("kind").notNull(),
     rateInputType: debtRateInputTypeEnum("rate_input_type").notNull().default("ANNUAL_PERCENT"),
     creditLimit: numeric("credit_limit", { precision: 18, scale: 2 }).default("0").notNull(),
@@ -247,6 +271,7 @@ export const debtAccountMovements = pgTable(
     movementDate: date("movement_date").notNull(),
     source: debtPaymentSourceEnum("source"),
     notes: text("notes"),
+    linkedCaMovementId: uuid("linked_ca_movement_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -254,6 +279,61 @@ export const debtAccountMovements = pgTable(
   (table) => ({
     shopDateIdx: index("debt_account_movements_shop_date_idx").on(table.shopId, table.movementDate),
     shopAccountIdx: index("debt_account_movements_shop_account_idx").on(table.shopId, table.debtAccountId),
+  }),
+);
+
+export const currentAccountAccounts = pgTable(
+  "current_account_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopId: uuid("shop_id")
+      .notNull()
+      .references(() => shops.id, { onDelete: "cascade" })
+      .unique(),
+    accountName: varchar("account_name", { length: 160 }).notNull(),
+    accountNumber: varchar("account_number", { length: 50 }),
+    bankName: varchar("bank_name", { length: 160 }),
+    ifscCode: varchar("ifsc_code", { length: 20 }),
+    openingBalance: numeric("opening_balance", { precision: 18, scale: 2 }).default("0").notNull(),
+    startDate: date("start_date"),
+    currentBalance: numeric("current_balance", { precision: 18, scale: 2 }).default("0").notNull(),
+    lastReconciledDate: date("last_reconciled_date"),
+    lastReconciledBalance: numeric("last_reconciled_balance", { precision: 18, scale: 2 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    shopIdx: index("current_account_accounts_shop_idx").on(table.shopId),
+  }),
+);
+
+export const currentAccountMovements = pgTable(
+  "current_account_movements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopId: uuid("shop_id")
+      .notNull()
+      .references(() => shops.id, { onDelete: "cascade" }),
+    movementDate: date("movement_date").notNull(),
+    movementType: caMovementTypeEnum("movement_type").notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).default("0").notNull(),
+    direction: integer("direction").notNull(),
+    sourceType: caSourceTypeEnum("source_type"),
+    sourceId: uuid("source_id"),
+    linkedDebtAccountId: uuid("linked_debt_account_id").references(() => debtAccounts.id, { onDelete: "set null" }),
+    linkedDebtMovementId: uuid("linked_debt_movement_id").references(() => debtAccountMovements.id, { onDelete: "set null" }),
+    description: text("description"),
+    notes: text("notes"),
+    balanceAfter: numeric("balance_after", { precision: 18, scale: 2 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    shopDateIdx: index("current_account_movements_shop_date_idx").on(table.shopId, table.movementDate),
+    shopTypeIdx: index("current_account_movements_shop_type_idx").on(table.shopId, table.movementType),
+    debtLinkIdx: index("current_account_movements_debt_link_idx").on(table.linkedDebtMovementId),
+    sourceIdx: index("current_account_movements_source_idx").on(table.shopId, table.sourceType, table.sourceId),
+    sourceUnique: uniqueIndex("current_account_movements_shop_source_unique").on(table.shopId, table.sourceType, table.sourceId),
   }),
 );
 
